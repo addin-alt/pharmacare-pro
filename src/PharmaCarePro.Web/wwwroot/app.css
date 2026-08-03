@@ -1716,3 +1716,269 @@ td {
 .inventory-action-button {
     white-space: nowrap;
 }
+
+/* Functional Point of Sale v1 */
+
+.pos-status {
+    margin-bottom: 20px;
+}
+
+.pos-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.pos-summary-card {
+    padding: 18px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+
+.pos-summary-card span {
+    display: block;
+    color: var(--text-soft);
+    font-size: 0.72rem;
+    font-weight: 750;
+}
+
+.pos-summary-card strong {
+    display: block;
+    margin-top: 7px;
+    font-size: 1.45rem;
+}
+
+.pos-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(380px, 0.75fr);
+    gap: 20px;
+    align-items: start;
+}
+
+.pos-cart-panel {
+    position: sticky;
+    top: 95px;
+}
+
+.pos-search {
+    width: 100%;
+    min-height: 45px;
+    margin-bottom: 18px;
+    padding: 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    background: white;
+    outline: none;
+}
+
+.pos-product-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 13px;
+}
+
+.pos-product-card {
+    display: flex;
+    min-height: 205px;
+    flex-direction: column;
+    padding: 15px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: white;
+}
+
+.pos-product-card > small {
+    display: block;
+    margin-top: 5px;
+    color: var(--text-soft);
+    font-size: 0.68rem;
+    line-height: 1.5;
+}
+
+.pos-product-heading,
+.pos-product-price,
+.pos-cart-line-heading,
+.pos-cart-actions,
+.pos-totals > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.pos-product-heading {
+    margin-bottom: 14px;
+    color: var(--text-soft);
+    font-size: 0.68rem;
+}
+
+.pos-product-price {
+    margin: auto 0 12px;
+    padding-top: 15px;
+    color: var(--text-soft);
+    font-size: 0.7rem;
+}
+
+.pos-product-price strong {
+    color: var(--primary-dark);
+    font-size: 0.9rem;
+}
+
+.pos-empty-cart {
+    min-height: 170px;
+}
+
+.pos-cart-lines {
+    display: grid;
+    max-height: 315px;
+    overflow-y: auto;
+    gap: 10px;
+    margin-bottom: 17px;
+}
+
+.pos-cart-line {
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-soft);
+}
+
+.pos-cart-line-heading strong,
+.pos-cart-line-heading small {
+    display: block;
+}
+
+.pos-cart-line-heading small {
+    margin-top: 3px;
+    color: var(--text-soft);
+    font-size: 0.62rem;
+}
+
+.pos-cart-actions {
+    margin-top: 10px;
+}
+
+.pos-quantity-control {
+    display: grid;
+    grid-template-columns: 30px 36px 30px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: white;
+}
+
+.pos-quantity-control button,
+.pos-quantity-control span {
+    min-height: 30px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: transparent;
+}
+
+.pos-quantity-control button {
+    cursor: pointer;
+}
+
+.pos-quantity-control span {
+    border-right: 1px solid var(--border);
+    border-left: 1px solid var(--border);
+    font-size: 0.7rem;
+    font-weight: 800;
+}
+
+.pos-text-button {
+    border: 0;
+    background: transparent;
+    font-size: 0.67rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.pos-danger-button {
+    color: #c93434;
+}
+
+.pos-allocation {
+    display: block;
+    margin-top: 8px;
+    color: var(--text-soft);
+    font-size: 0.59rem;
+}
+
+.pos-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 13px;
+}
+
+.pos-full-payment {
+    width: 100%;
+    min-height: 38px;
+    margin-bottom: 13px;
+    border: 1px solid rgba(15, 159, 132, 0.25);
+    border-radius: 9px;
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    font-size: 0.69rem;
+    font-weight: 850;
+    cursor: pointer;
+}
+
+.pos-totals {
+    display: grid;
+    gap: 9px;
+    padding: 14px 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+}
+
+.pos-totals span {
+    color: var(--text-soft);
+    font-size: 0.7rem;
+}
+
+.pos-grand-total {
+    padding-top: 9px;
+    border-top: 1px dashed var(--border);
+}
+
+.pos-grand-total strong {
+    color: var(--primary-dark);
+    font-size: 1.12rem;
+}
+
+.pos-checkout-button {
+    width: 100%;
+    margin-top: 15px;
+}
+
+@media (max-width: 1150px) {
+    .pos-workspace {
+        grid-template-columns: 1fr;
+    }
+
+    .pos-cart-panel {
+        position: static;
+    }
+}
+
+@media (max-width: 760px) {
+    .pos-summary-grid,
+    .pos-product-grid,
+    .pos-form-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 560px) {
+    .pos-summary-grid,
+    .pos-product-grid,
+    .pos-form-grid {
+        grid-template-columns: 1fr;
+    }
+}

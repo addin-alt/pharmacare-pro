@@ -16,6 +16,10 @@ public class ApplicationDbContext(
     public DbSet<StockMovement> StockMovements =>
         Set<StockMovement>();
 
+    public DbSet<Sale> Sales => Set<Sale>();
+
+    public DbSet<SaleItem> SaleItems => Set<SaleItem>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -126,5 +130,64 @@ public class ApplicationDbContext(
                 .HasForeignKey(movement => movement.MedicineBatchId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+        builder.Entity<Sale>(entity =>
+        {
+            entity.ToTable("Sales");
+
+            entity.HasKey(sale => sale.Id);
+
+            entity.HasIndex(sale => sale.InvoiceNumber)
+                .IsUnique();
+
+            entity.HasIndex(sale => sale.SoldAtUtc);
+            entity.HasIndex(sale => sale.Status);
+            entity.HasIndex(sale => sale.CustomerPhone);
+
+            entity.Property(sale => sale.Subtotal).HasPrecision(18, 2);
+            entity.Property(sale => sale.DiscountAmount).HasPrecision(18, 2);
+            entity.Property(sale => sale.TaxAmount).HasPrecision(18, 2);
+            entity.Property(sale => sale.GrandTotal).HasPrecision(18, 2);
+            entity.Property(sale => sale.PaidAmount).HasPrecision(18, 2);
+            entity.Property(sale => sale.DueAmount).HasPrecision(18, 2);
+
+            entity.Property(sale => sale.PaymentMethod)
+                .HasConversion<string>()
+                .HasMaxLength(40);
+
+            entity.Property(sale => sale.Status)
+                .HasConversion<string>()
+                .HasMaxLength(40);
+        });
+
+        builder.Entity<SaleItem>(entity =>
+        {
+            entity.ToTable("SaleItems");
+
+            entity.HasKey(item => item.Id);
+
+            entity.HasIndex(item => item.SaleId);
+            entity.HasIndex(item => item.MedicineId);
+            entity.HasIndex(item => item.MedicineBatchId);
+
+            entity.Property(item => item.UnitPrice).HasPrecision(18, 2);
+            entity.Property(item => item.DiscountAmount).HasPrecision(18, 2);
+            entity.Property(item => item.LineTotal).HasPrecision(18, 2);
+
+            entity.HasOne(item => item.Sale)
+                .WithMany(sale => sale.Items)
+                .HasForeignKey(item => item.SaleId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(item => item.Medicine)
+                .WithMany()
+                .HasForeignKey(item => item.MedicineId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(item => item.MedicineBatch)
+                .WithMany()
+                .HasForeignKey(item => item.MedicineBatchId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
     }
 }

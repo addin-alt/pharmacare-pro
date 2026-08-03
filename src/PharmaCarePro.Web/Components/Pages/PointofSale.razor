@@ -1,66 +1,810 @@
 @page "/pos"
+@using Microsoft.EntityFrameworkCore
+@using PharmaCarePro.Application.Inventory
+@using PharmaCarePro.Domain.Entities
+@using PharmaCarePro.Web.Data
+@inject IServiceScopeFactory ScopeFactory
 
 <PageTitle>Point of Sale | PharmaCare Pro</PageTitle>
 
 <div class="page-heading module-heading">
     <div>
-        <span class="eyebrow">PHARMACARE PRO MODULE</span>
+        <span class="eyebrow">PHARMACY CHECKOUT</span>
         <h1>Point of Sale</h1>
-        <p>Process fast and accurate pharmacy sales.</p>
+        <p>Sell medicines using FEFO batch allocation and live inventory.</p>
     </div>
 
-    <a class="button button-primary" href="">
+    <a class="button button-secondary" href="">
         Return to dashboard
     </a>
 </div>
 
-<section class="module-intro-card">
-    <div class="module-large-icon">▣</div>
-
-    <div class="module-intro-content">
-        <span class="module-status">FOUNDATION READY</span>
-        <h2>Point of Sale module</h2>
-        <p>
-            The interface foundation is ready. Database entities, forms,
-            validation and operational workflows will be implemented in
-            the next development stages.
-        </p>
-
-        <div class="module-feature-grid">
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Barcode and medicine search</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Automatic batch selection</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Discount, tax and payment processing</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Printable invoices and sales returns</p>
-            </div>
-        </div>
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <div class="form-status pos-status
+         @(statusIsError ? "status-error" : "status-success")">
+        @statusMessage
     </div>
+}
+
+<section class="pos-summary-grid">
+    <article class="pos-summary-card">
+        <span>Available medicines</span>
+        <strong>@catalog.Count</strong>
+    </article>
+
+    <article class="pos-summary-card">
+        <span>Cart quantity</span>
+        <strong>@CartQuantity</strong>
+    </article>
+
+    <article class="pos-summary-card">
+        <span>Grand total</span>
+        <strong>৳@GrandTotal.ToString("N2")</strong>
+    </article>
+
+    <article class="pos-summary-card">
+        <span>Amount due</span>
+        <strong>৳@DueAmount.ToString("N2")</strong>
+    </article>
 </section>
 
-<section class="dashboard-panel module-next-panel">
-    <div class="panel-heading">
-        <div>
-            <h2>Next implementation stage</h2>
-            <p>This module will be connected to Supabase PostgreSQL.</p>
-        </div>
-    </div>
+<div class="pos-workspace">
+    <section class="dashboard-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Medicine catalog</h2>
+                <p>Select a medicine to add it to the sale.</p>
+            </div>
 
-    <div class="module-next-steps">
-        <span>Database entities</span>
-        <span>Validation rules</span>
-        <span>Create and edit forms</span>
-        <span>Search and filtering</span>
-        <span>Role permissions</span>
-        <span>Automated tests</span>
-    </div>
-</section>
+            <a href="inventory">Manage inventory</a>
+        </div>
+
+        <input class="pos-search"
+               type="search"
+               @bind="searchText"
+               @bind:event="oninput"
+               placeholder="Search brand, generic, SKU or barcode..." />
+
+        @if (isLoading)
+        {
+            <div class="medicine-empty-state">
+                <strong>Loading available medicines...</strong>
+            </div>
+        }
+        else if (!FilteredCatalog.Any())
+        {
+            <div class="medicine-empty-state">
+                <span>Rx</span>
+                <strong>No available medicine found</strong>
+                <p>Receive usable inventory before making a sale.</p>
+            </div>
+        }
+        else
+        {
+            <div class="pos-product-grid">
+                @foreach (var medicine in FilteredCatalog)
+                {
+                    <article class="pos-product-card" @key="medicine.Id">
+                        <div class="pos-product-heading">
+                            <span class="medicine-table-icon">Rx</span>
+                            <span>@medicine.AvailableQuantity units</span>
+                        </div>
+
+                        <strong>@medicine.BrandName</strong>
+
+                        <small>
+                            @medicine.GenericName ·
+                            @medicine.Strength ·
+                            @medicine.DosageForm
+                        </small>
+
+                        <div class="pos-product-price">
+                            <span>Starting price</span>
+                            <strong>৳@medicine.Price.ToString("N2")</strong>
+                        </div>
+
+                        <button class="button button-primary"
+                                type="button"
+                                disabled="@isProcessing"
+                                @onclick="() => AddMedicineAsync(medicine.Id)">
+                            Add to cart
+                        </button>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+
+    <aside class="dashboard-panel pos-cart-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Current sale</h2>
+                <p>@cart.Count medicine lines</p>
+            </div>
+
+            @if (cart.Count > 0)
+            {
+                <button class="pos-text-button pos-danger-button"
+                        type="button"
+                        @onclick="ClearCart">
+                    Clear cart
+                </button>
+            }
+        </div>
+
+        @if (cart.Count == 0)
+        {
+            <div class="medicine-empty-state pos-empty-cart">
+                <span>▣</span>
+                <strong>The cart is empty</strong>
+                <p>Click Add to cart beside Napa.</p>
+            </div>
+        }
+        else
+        {
+            <div class="pos-cart-lines">
+                @foreach (var line in cart)
+                {
+                    <article class="pos-cart-line" @key="line.MedicineId">
+                        <div class="pos-cart-line-heading">
+                            <div>
+                                <strong>@line.BrandName</strong>
+                                <small>
+                                    @line.GenericName · @line.Strength
+                                </small>
+                            </div>
+
+                            <strong>৳@line.Total.ToString("N2")</strong>
+                        </div>
+
+                        <div class="pos-cart-actions">
+                            <div class="pos-quantity-control">
+                                <button type="button"
+                                        disabled="@isProcessing"
+                                        @onclick="() => ChangeQuantityAsync(
+                                            line.MedicineId,
+                                            -1)">
+                                    −
+                                </button>
+
+                                <span>@line.Quantity</span>
+
+                                <button type="button"
+                                        disabled="@isProcessing"
+                                        @onclick="() => ChangeQuantityAsync(
+                                            line.MedicineId,
+                                            1)">
+                                    +
+                                </button>
+                            </div>
+
+                            <button class="pos-text-button pos-danger-button"
+                                    type="button"
+                                    @onclick="() => RemoveLine(line.MedicineId)">
+                                Remove
+                            </button>
+                        </div>
+
+                        <small class="pos-allocation">
+                            FEFO:
+                            @string.Join(
+                                " · ",
+                                line.Allocations.Select(
+                                    allocation =>
+                                        $"{allocation.BatchNumber}: {allocation.Quantity}"))
+                        </small>
+                    </article>
+                }
+            </div>
+        }
+
+        <div class="pos-form-grid">
+            <div class="form-field">
+                <label>Customer name</label>
+                <input @bind="customerName"
+                       placeholder="Walk-in customer" />
+            </div>
+
+            <div class="form-field">
+                <label>Phone number</label>
+                <input @bind="customerPhone"
+                       placeholder="Optional" />
+            </div>
+
+            <div class="form-field">
+                <label>Discount</label>
+                <input type="number"
+                       min="0"
+                       step="0.01"
+                       @bind="discountAmount" />
+            </div>
+
+            <div class="form-field">
+                <label>Tax</label>
+                <input type="number"
+                       min="0"
+                       step="0.01"
+                       @bind="taxAmount" />
+            </div>
+
+            <div class="form-field">
+                <label>Payment method</label>
+                <select @bind="paymentMethod">
+                    @foreach (var method in Enum.GetValues<PaymentMethod>())
+                    {
+                        <option value="@method">
+                            @FormatPaymentMethod(method)
+                        </option>
+                    }
+                </select>
+            </div>
+
+            <div class="form-field">
+                <label>Amount received</label>
+                <input type="number"
+                       min="0"
+                       step="0.01"
+                       @bind="amountReceived" />
+            </div>
+        </div>
+
+        <button class="pos-full-payment"
+                type="button"
+                disabled="@(cart.Count == 0)"
+                @onclick="SetFullPayment">
+            Set full payment
+        </button>
+
+        <div class="pos-totals">
+            <div>
+                <span>Subtotal</span>
+                <strong>৳@Subtotal.ToString("N2")</strong>
+            </div>
+
+            <div>
+                <span>Discount</span>
+                <strong>৳@discountAmount.ToString("N2")</strong>
+            </div>
+
+            <div>
+                <span>Tax</span>
+                <strong>৳@taxAmount.ToString("N2")</strong>
+            </div>
+
+            <div class="pos-grand-total">
+                <span>Grand total</span>
+                <strong>৳@GrandTotal.ToString("N2")</strong>
+            </div>
+
+            <div>
+                <span>Due</span>
+                <strong>৳@DueAmount.ToString("N2")</strong>
+            </div>
+
+            <div>
+                <span>Change</span>
+                <strong>৳@ChangeAmount.ToString("N2")</strong>
+            </div>
+        </div>
+
+        <button class="button button-primary pos-checkout-button"
+                type="button"
+                disabled="@(cart.Count == 0 || isProcessing)"
+                @onclick="CompleteSaleAsync">
+            @(isProcessing ? "Completing sale..." : "Complete sale")
+        </button>
+    </aside>
+</div>
+
+@code {
+    private List<MedicineOption> catalog = [];
+    private readonly List<CartLine> cart = [];
+
+    private string searchText = string.Empty;
+    private string? customerName;
+    private string? customerPhone;
+    private string? statusMessage;
+
+    private decimal discountAmount;
+    private decimal taxAmount;
+    private decimal amountReceived;
+
+    private PaymentMethod paymentMethod = PaymentMethod.Cash;
+
+    private bool statusIsError;
+    private bool isLoading = true;
+    private bool isProcessing;
+
+    private IEnumerable<MedicineOption> FilteredCatalog
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(searchText))
+            {
+                return catalog;
+            }
+
+            var search = searchText.Trim();
+
+            return catalog.Where(medicine =>
+                medicine.BrandName.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ||
+                medicine.GenericName.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ||
+                medicine.Sku.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ||
+                (medicine.Barcode?.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+    }
+
+    private int CartQuantity =>
+        cart.Sum(line => line.Quantity);
+
+    private decimal Subtotal =>
+        Math.Round(cart.Sum(line => line.Total), 2);
+
+    private decimal GrandTotal =>
+        Math.Max(
+            0,
+            Math.Round(
+                Subtotal - discountAmount + taxAmount,
+                2));
+
+    private decimal DueAmount =>
+        Math.Max(
+            0,
+            Math.Round(
+                GrandTotal - amountReceived,
+                2));
+
+    private decimal ChangeAmount =>
+        Math.Max(
+            0,
+            Math.Round(
+                amountReceived - GrandTotal,
+                2));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCatalogAsync();
+    }
+
+    private async Task LoadCatalogAsync()
+    {
+        isLoading = true;
+
+        using var scope = ScopeFactory.CreateScope();
+
+        var database = scope.ServiceProvider
+            .GetRequiredService<ApplicationDbContext>();
+
+        var today = DateTime.UtcNow.Date;
+
+        var medicines = await database.Medicines
+            .AsNoTracking()
+            .Where(medicine => medicine.IsActive)
+            .Include(medicine => medicine.Batches.Where(batch =>
+                batch.AvailableQuantity > 0 &&
+                !batch.IsQuarantined &&
+                batch.ExpiryDate >= today))
+            .OrderBy(medicine => medicine.BrandName)
+            .ThenBy(medicine => medicine.Strength)
+            .ToListAsync();
+
+        catalog = medicines
+            .Select(medicine =>
+            {
+                var batches = medicine.Batches
+                    .OrderBy(batch => batch.ExpiryDate)
+                    .ThenBy(batch => batch.CreatedAtUtc)
+                    .ToList();
+
+                return new MedicineOption(
+                    medicine.Id,
+                    medicine.BrandName,
+                    medicine.GenericName,
+                    medicine.Strength,
+                    medicine.DosageForm,
+                    medicine.Sku,
+                    medicine.Barcode,
+                    batches.Sum(batch => batch.AvailableQuantity),
+                    batches.FirstOrDefault()?.SellingPrice ??
+                        medicine.SellingPrice);
+            })
+            .Where(medicine => medicine.AvailableQuantity > 0)
+            .ToList();
+
+        isLoading = false;
+    }
+
+    private async Task AddMedicineAsync(Guid medicineId)
+    {
+        var existing = cart.SingleOrDefault(
+            line => line.MedicineId == medicineId);
+
+        await SetQuantityAsync(
+            medicineId,
+            (existing?.Quantity ?? 0) + 1);
+    }
+
+    private async Task ChangeQuantityAsync(
+        Guid medicineId,
+        int change)
+    {
+        var existing = cart.SingleOrDefault(
+            line => line.MedicineId == medicineId);
+
+        if (existing is null)
+        {
+            return;
+        }
+
+        var quantity = existing.Quantity + change;
+
+        if (quantity <= 0)
+        {
+            RemoveLine(medicineId);
+            return;
+        }
+
+        await SetQuantityAsync(medicineId, quantity);
+    }
+
+    private async Task SetQuantityAsync(
+        Guid medicineId,
+        int quantity)
+    {
+        try
+        {
+            var medicine = catalog.Single(
+                item => item.Id == medicineId);
+
+            var allocations = await GetAllocationsAsync(
+                medicineId,
+                quantity);
+
+            var newLine = new CartLine(
+                medicine.Id,
+                medicine.BrandName,
+                medicine.GenericName,
+                medicine.Strength,
+                quantity,
+                allocations);
+
+            var existing = cart.SingleOrDefault(
+                line => line.MedicineId == medicineId);
+
+            if (existing is null)
+            {
+                cart.Add(newLine);
+            }
+            else
+            {
+                cart[cart.IndexOf(existing)] = newLine;
+            }
+
+            statusMessage = null;
+            statusIsError = false;
+        }
+        catch (InvalidOperationException exception)
+        {
+            statusIsError = true;
+            statusMessage = exception.Message;
+        }
+    }
+
+    private async Task<IReadOnlyList<FefoAllocation>>
+        GetAllocationsAsync(
+            Guid medicineId,
+            int quantity)
+    {
+        using var scope = ScopeFactory.CreateScope();
+
+        var database = scope.ServiceProvider
+            .GetRequiredService<ApplicationDbContext>();
+
+        var today = DateTime.UtcNow.Date;
+
+        var batches = await database.MedicineBatches
+            .AsNoTracking()
+            .Where(batch =>
+                batch.MedicineId == medicineId &&
+                batch.AvailableQuantity > 0 &&
+                !batch.IsQuarantined &&
+                batch.ExpiryDate >= today)
+            .OrderBy(batch => batch.ExpiryDate)
+            .ThenBy(batch => batch.CreatedAtUtc)
+            .ToListAsync();
+
+        return FefoAllocator.Allocate(
+            batches.Select(batch =>
+                new FefoBatchCandidate(
+                    batch.Id,
+                    batch.BatchNumber,
+                    batch.ExpiryDate,
+                    batch.AvailableQuantity,
+                    batch.SellingPrice,
+                    batch.IsQuarantined)),
+            quantity,
+            today);
+    }
+
+    private void RemoveLine(Guid medicineId)
+    {
+        cart.RemoveAll(
+            line => line.MedicineId == medicineId);
+    }
+
+    private void ClearCart()
+    {
+        cart.Clear();
+        discountAmount = 0;
+        taxAmount = 0;
+        amountReceived = 0;
+        statusMessage = null;
+    }
+
+    private void SetFullPayment()
+    {
+        amountReceived = GrandTotal;
+    }
+
+    private async Task CompleteSaleAsync()
+    {
+        if (cart.Count == 0)
+        {
+            statusIsError = true;
+            statusMessage =
+                "Add at least one medicine before completing the sale.";
+            return;
+        }
+
+        if (discountAmount > Subtotal)
+        {
+            statusIsError = true;
+            statusMessage =
+                "Discount cannot exceed the subtotal.";
+            return;
+        }
+
+        isProcessing = true;
+        statusIsError = false;
+        statusMessage = null;
+
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+
+            var database = scope.ServiceProvider
+                .GetRequiredService<ApplicationDbContext>();
+
+            await using var transaction =
+                await database.Database.BeginTransactionAsync(
+                    System.Data.IsolationLevel.Serializable);
+
+            var now = DateTime.UtcNow;
+
+            var invoiceNumber =
+                $"PCP-{now:yyyyMMddHHmmss}-" +
+                $"{Random.Shared.Next(100, 999)}";
+
+            var sale = new Sale
+            {
+                InvoiceNumber = invoiceNumber,
+                CustomerName = Normalize(customerName),
+                CustomerPhone = Normalize(customerPhone),
+                SoldAtUtc = now,
+                DiscountAmount = Math.Round(discountAmount, 2),
+                TaxAmount = Math.Round(taxAmount, 2),
+                PaymentMethod = paymentMethod,
+                CreatedAtUtc = now
+            };
+
+            decimal verifiedSubtotal = 0;
+
+            foreach (var cartLine in cart)
+            {
+                var batches = await database.MedicineBatches
+                    .Include(batch => batch.Medicine)
+                    .Where(batch =>
+                        batch.MedicineId == cartLine.MedicineId &&
+                        batch.AvailableQuantity > 0 &&
+                        !batch.IsQuarantined &&
+                        batch.ExpiryDate >= now.Date)
+                    .OrderBy(batch => batch.ExpiryDate)
+                    .ThenBy(batch => batch.CreatedAtUtc)
+                    .ToListAsync();
+
+                var allocations = FefoAllocator.Allocate(
+                    batches.Select(batch =>
+                        new FefoBatchCandidate(
+                            batch.Id,
+                            batch.BatchNumber,
+                            batch.ExpiryDate,
+                            batch.AvailableQuantity,
+                            batch.SellingPrice,
+                            batch.IsQuarantined)),
+                    cartLine.Quantity,
+                    now.Date);
+
+                foreach (var allocation in allocations)
+                {
+                    var batch = batches.Single(
+                        item => item.Id == allocation.BatchId);
+
+                    batch.AvailableQuantity -=
+                        allocation.Quantity;
+
+                    batch.UpdatedAtUtc = now;
+
+                    verifiedSubtotal +=
+                        allocation.LineTotal;
+
+                    sale.Items.Add(new SaleItem
+                    {
+                        MedicineId = batch.MedicineId,
+                        MedicineBatchId = batch.Id,
+                        BrandName = batch.Medicine!.BrandName,
+                        GenericName = batch.Medicine.GenericName,
+                        Strength = batch.Medicine.Strength,
+                        BatchNumber = batch.BatchNumber,
+                        Quantity = allocation.Quantity,
+                        UnitPrice = allocation.UnitPrice,
+                        DiscountAmount = 0,
+                        LineTotal = allocation.LineTotal
+                    });
+
+                    database.StockMovements.Add(
+                        new StockMovement
+                        {
+                            MedicineBatchId = batch.Id,
+                            MovementType =
+                                StockMovementType.Sale,
+                            QuantityChange =
+                                -allocation.Quantity,
+                            BalanceAfter =
+                                batch.AvailableQuantity,
+                            ReferenceNumber =
+                                invoiceNumber,
+                            Notes =
+                                "Stock issued through point of sale.",
+                            CreatedAtUtc = now
+                        });
+                }
+            }
+
+            sale.Subtotal =
+                Math.Round(verifiedSubtotal, 2);
+
+            sale.GrandTotal =
+                Math.Max(
+                    0,
+                    Math.Round(
+                        sale.Subtotal -
+                        sale.DiscountAmount +
+                        sale.TaxAmount,
+                        2));
+
+            sale.PaidAmount =
+                Math.Min(
+                    sale.GrandTotal,
+                    Math.Max(
+                        0,
+                        Math.Round(
+                            amountReceived,
+                            2)));
+
+            sale.DueAmount =
+                Math.Round(
+                    sale.GrandTotal -
+                    sale.PaidAmount,
+                    2);
+
+            sale.Status = sale.DueAmount == 0
+                ? SaleStatus.Completed
+                : sale.PaidAmount > 0
+                    ? SaleStatus.PartiallyPaid
+                    : SaleStatus.Due;
+
+            if (sale.PaidAmount == 0)
+            {
+                sale.PaymentMethod = PaymentMethod.Due;
+            }
+
+            database.Sales.Add(sale);
+
+            await database.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            var change = ChangeAmount;
+
+            cart.Clear();
+            customerName = null;
+            customerPhone = null;
+            discountAmount = 0;
+            taxAmount = 0;
+            amountReceived = 0;
+
+            statusMessage =
+                $"Sale completed successfully. " +
+                $"Invoice: {invoiceNumber}. " +
+                $"Change: ৳{change:N2}";
+
+            await LoadCatalogAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            statusIsError = true;
+            statusMessage = exception.Message;
+        }
+        catch (DbUpdateException)
+        {
+            statusIsError = true;
+            statusMessage =
+                "The sale could not be completed because inventory changed. " +
+                "Please try again.";
+        }
+        catch (Exception exception)
+        {
+            statusIsError = true;
+            statusMessage =
+                $"The sale could not be completed: {exception.Message}";
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+
+    private static string FormatPaymentMethod(
+        PaymentMethod method)
+    {
+        return method switch
+        {
+            PaymentMethod.MobileBanking =>
+                "Mobile banking",
+            PaymentMethod.BankTransfer =>
+                "Bank transfer",
+            _ => method.ToString()
+        };
+    }
+
+    private static string? Normalize(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Trim();
+    }
+
+    private sealed record MedicineOption(
+        Guid Id,
+        string BrandName,
+        string GenericName,
+        string Strength,
+        string DosageForm,
+        string Sku,
+        string? Barcode,
+        int AvailableQuantity,
+        decimal Price);
+
+    private sealed record CartLine(
+        Guid MedicineId,
+        string BrandName,
+        string GenericName,
+        string Strength,
+        int Quantity,
+        IReadOnlyList<FefoAllocation> Allocations)
+    {
+        public decimal Total =>
+            Math.Round(
+                Allocations.Sum(
+                    allocation => allocation.LineTotal),
+                2);
+    }
+}
