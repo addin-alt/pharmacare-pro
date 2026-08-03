@@ -1,23 +1,52 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 
-<div class="page">
-    <div class="sidebar">
+<div class="app-shell">
+    <aside class="app-sidebar">
         <NavMenu />
-    </div>
+    </aside>
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
+    <div class="app-main">
+        <header class="app-topbar">
+            <div class="topbar-search">
+                <span aria-hidden="true">⌕</span>
+                <input type="search"
+                       placeholder="Search medicines, invoices, customers..."
+                       aria-label="Search PharmaCare Pro" />
+            </div>
 
-        <article class="content px-4">
+            <div class="topbar-actions">
+                <span class="environment-pill">
+                    <span class="status-dot"></span>
+                    Supabase connected
+                </span>
+
+                <AuthorizeView>
+                    <Authorized>
+                        <a class="user-chip" href="Account/Manage">
+                            <span class="user-avatar">A</span>
+                            <span>@context.User.Identity?.Name</span>
+                        </a>
+                    </Authorized>
+                    <NotAuthorized>
+                        <a class="topbar-login" href="Account/Login">Sign in</a>
+                    </NotAuthorized>
+                </AuthorizeView>
+            </div>
+        </header>
+
+        <main class="content-area">
             @Body
-        </article>
-    </main>
+        </main>
+
+        <footer class="app-footer">
+            <span>PharmaCare Pro</span>
+            <span>Developed by Addin Alt</span>
+        </footer>
+    </div>
 </div>
 
 <div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
+    An unexpected error occurred.
     <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
+    <span class="dismiss">×</span>
 </div>

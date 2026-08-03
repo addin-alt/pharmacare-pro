@@ -1,7 +1,278 @@
-﻿@page "/"
+@page "/"
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Dashboard | PharmaCare Pro</PageTitle>
 
-<h1>Hello, world!</h1>
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">MONDAY, 3 AUGUST 2026</span>
+        <h1>Good evening, Addin</h1>
+        <p>Here is the current overview of your pharmacy.</p>
+    </div>
 
-Welcome to your new app.
+    <div class="heading-actions">
+        <a class="button button-secondary" href="medicines">
+            <span>＋</span>
+            Add medicine
+        </a>
+
+        <a class="button button-primary" href="pos">
+            <span>▣</span>
+            New sale
+        </a>
+    </div>
+</div>
+
+<section class="welcome-panel">
+    <div class="welcome-copy">
+        <span class="welcome-kicker">PHARMACY WORKSPACE</span>
+        <h2>Everything your pharmacy needs, in one secure system.</h2>
+        <p>
+            Manage medicine batches, expiry dates, purchases, prescriptions,
+            customer accounts and daily sales from one responsive dashboard.
+        </p>
+
+        <div class="welcome-actions">
+            <a href="pos" class="button button-light">Open point of sale</a>
+            <a href="inventory" class="button button-ghost">Review inventory</a>
+        </div>
+    </div>
+
+    <div class="welcome-visual" aria-hidden="true">
+        <div class="visual-orbit orbit-one"></div>
+        <div class="visual-orbit orbit-two"></div>
+        <div class="medical-cross">
+            <span></span>
+            <span></span>
+        </div>
+    </div>
+</section>
+
+<section class="metric-grid">
+    <article class="metric-card">
+        <div class="metric-card-top">
+            <span class="metric-icon metric-green">৳</span>
+            <span class="metric-trend positive">Ready</span>
+        </div>
+        <span class="metric-label">Today's sales</span>
+        <strong class="metric-value">৳0.00</strong>
+        <small>No sales recorded yet</small>
+    </article>
+
+    <article class="metric-card">
+        <div class="metric-card-top">
+            <span class="metric-icon metric-blue">▣</span>
+            <span class="metric-trend neutral">Today</span>
+        </div>
+        <span class="metric-label">Invoices</span>
+        <strong class="metric-value">0</strong>
+        <small>Sales invoices generated</small>
+    </article>
+
+    <article class="metric-card">
+        <div class="metric-card-top">
+            <span class="metric-icon metric-amber">!</span>
+            <span class="metric-trend warning">Attention</span>
+        </div>
+        <span class="metric-label">Low stock</span>
+        <strong class="metric-value">0</strong>
+        <small>Items below reorder level</small>
+    </article>
+
+    <article class="metric-card">
+        <div class="metric-card-top">
+            <span class="metric-icon metric-red">⌛</span>
+            <span class="metric-trend neutral">90 days</span>
+        </div>
+        <span class="metric-label">Expiring soon</span>
+        <strong class="metric-value">0</strong>
+        <small>Batches approaching expiry</small>
+    </article>
+</section>
+
+<div class="dashboard-grid">
+    <section class="dashboard-panel quick-actions-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Quick actions</h2>
+                <p>Start common pharmacy tasks.</p>
+            </div>
+        </div>
+
+        <div class="quick-action-grid">
+            <a class="quick-action" href="pos">
+                <span class="quick-action-icon action-teal">▣</span>
+                <span>
+                    <strong>New sale</strong>
+                    <small>Open point of sale</small>
+                </span>
+            </a>
+
+            <a class="quick-action" href="medicines">
+                <span class="quick-action-icon action-purple">✚</span>
+                <span>
+                    <strong>Add medicine</strong>
+                    <small>Create catalog item</small>
+                </span>
+            </a>
+
+            <a class="quick-action" href="purchases">
+                <span class="quick-action-icon action-blue">↓</span>
+                <span>
+                    <strong>Record purchase</strong>
+                    <small>Receive supplier stock</small>
+                </span>
+            </a>
+
+            <a class="quick-action" href="prescriptions">
+                <span class="quick-action-icon action-orange">⌑</span>
+                <span>
+                    <strong>Prescription</strong>
+                    <small>Register and dispense</small>
+                </span>
+            </a>
+
+            <a class="quick-action" href="customers">
+                <span class="quick-action-icon action-pink">♙</span>
+                <span>
+                    <strong>Add customer</strong>
+                    <small>Create patient profile</small>
+                </span>
+            </a>
+
+            <a class="quick-action" href="reports">
+                <span class="quick-action-icon action-indigo">↗</span>
+                <span>
+                    <strong>View reports</strong>
+                    <small>Analyze performance</small>
+                </span>
+            </a>
+        </div>
+    </section>
+
+    <section class="dashboard-panel inventory-health-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Inventory health</h2>
+                <p>Live stock status will appear here.</p>
+            </div>
+            <a href="inventory">View inventory</a>
+        </div>
+
+        <div class="health-list">
+            <div class="health-row">
+                <div class="health-label">
+                    <span>Healthy stock</span>
+                    <strong>0 items</strong>
+                </div>
+                <div class="progress-track">
+                    <span class="progress-value healthy-progress"></span>
+                </div>
+            </div>
+
+            <div class="health-row">
+                <div class="health-label">
+                    <span>Low stock</span>
+                    <strong>0 items</strong>
+                </div>
+                <div class="progress-track">
+                    <span class="progress-value low-progress"></span>
+                </div>
+            </div>
+
+            <div class="health-row">
+                <div class="health-label">
+                    <span>Out of stock</span>
+                    <strong>0 items</strong>
+                </div>
+                <div class="progress-track">
+                    <span class="progress-value empty-progress"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="inventory-empty">
+            <span class="empty-icon">▤</span>
+            <strong>Your inventory is ready for setup</strong>
+            <p>Add your first medicine and purchase batch to begin tracking stock.</p>
+            <a href="medicines">Add first medicine</a>
+        </div>
+    </section>
+</div>
+
+<div class="dashboard-grid lower-grid">
+    <section class="dashboard-panel recent-sales-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Recent sales</h2>
+                <p>Your latest pharmacy transactions.</p>
+            </div>
+            <a href="reports">View all</a>
+        </div>
+
+        <div class="responsive-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Invoice</th>
+                        <th>Customer</th>
+                        <th>Payment</th>
+                        <th>Total</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="empty-table-row">
+                        <td colspan="5">
+                            <span>No sales have been recorded yet.</span>
+                            <a href="pos">Create the first sale</a>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="dashboard-panel alert-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Setup progress</h2>
+                <p>Prepare the pharmacy for daily use.</p>
+            </div>
+            <span class="progress-count">2 of 6</span>
+        </div>
+
+        <div class="setup-list">
+            <div class="setup-item complete">
+                <span class="setup-check">✓</span>
+                <div>
+                    <strong>Create the .NET application</strong>
+                    <small>Blazor solution is running.</small>
+                </div>
+            </div>
+
+            <div class="setup-item complete">
+                <span class="setup-check">✓</span>
+                <div>
+                    <strong>Connect Supabase</strong>
+                    <small>PostgreSQL Identity tables are ready.</small>
+                </div>
+            </div>
+
+            <div class="setup-item">
+                <span class="setup-check">3</span>
+                <div>
+                    <strong>Configure pharmacy profile</strong>
+                    <small>Add business and branch information.</small>
+                </div>
+            </div>
+
+            <div class="setup-item">
+                <span class="setup-check">4</span>
+                <div>
+                    <strong>Add medicines and suppliers</strong>
+                    <small>Create the initial product catalog.</small>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
