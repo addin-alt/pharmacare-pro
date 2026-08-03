@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PharmaCarePro.Application/PharmaCarePro.Application.csproj" />
+    <Project Path="src/PharmaCarePro.Domain/PharmaCarePro.Domain.csproj" />
+    <Project Path="src/PharmaCarePro.Infrastructure/PharmaCarePro.Infrastructure.csproj" />
+    <Project Path="src/PharmaCarePro.Web/PharmaCarePro.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PharmaCarePro.IntegrationTests/PharmaCarePro.IntegrationTests.csproj" />
+    <Project Path="tests/PharmaCarePro.UnitTests/PharmaCarePro.UnitTests.csproj" />
+  </Folder>
+</Solution>
