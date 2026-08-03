@@ -1488,3 +1488,231 @@ td {
         grid-column: auto;
     }
 }
+
+/* Functional batch inventory */
+
+.inventory-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.inventory-summary-card {
+    padding: 20px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+
+.inventory-summary-card span,
+.inventory-summary-card small {
+    display: block;
+    color: var(--text-soft);
+}
+
+.inventory-summary-card span {
+    font-size: 0.76rem;
+    font-weight: 750;
+}
+
+.inventory-summary-card strong {
+    display: block;
+    margin: 7px 0 3px;
+    font-size: 1.65rem;
+}
+
+.inventory-summary-card small {
+    font-size: 0.68rem;
+}
+
+.inventory-workspace {
+    display: grid;
+    grid-template-columns:
+        minmax(340px, 0.65fr)
+        minmax(0, 1.35fr);
+    gap: 20px;
+    align-items: start;
+}
+
+.inventory-receive-panel {
+    position: sticky;
+    top: 98px;
+}
+
+.inventory-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 15px;
+}
+
+.inventory-save-button {
+    width: 100%;
+    margin-top: 18px;
+}
+
+.inventory-no-medicine {
+    padding: 22px;
+    border-radius: 13px;
+    background: var(--surface-soft);
+    text-align: center;
+}
+
+.inventory-no-medicine strong {
+    display: block;
+}
+
+.inventory-no-medicine p {
+    margin: 7px 0 12px;
+    color: var(--text-soft);
+    font-size: 0.72rem;
+}
+
+.inventory-no-medicine a {
+    color: var(--primary);
+    font-size: 0.74rem;
+    font-weight: 850;
+}
+
+.inventory-filter-row {
+    display: grid;
+    grid-template-columns:
+        minmax(180px, 1fr)
+        minmax(145px, auto)
+        auto
+        auto;
+    gap: 9px;
+    margin-bottom: 18px;
+}
+
+.inventory-filter-row input,
+.inventory-filter-row select {
+    min-height: 43px;
+    padding: 0 13px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #ffffff;
+    color: var(--text);
+    outline: 0;
+}
+
+.inventory-filter-row input:focus,
+.inventory-filter-row select:focus {
+    border-color: rgba(15, 159, 132, 0.65);
+    box-shadow: 0 0 0 4px rgba(15, 159, 132, 0.09);
+}
+
+.inventory-table-wrapper {
+    max-height: 760px;
+}
+
+.inventory-table td {
+    vertical-align: middle;
+}
+
+.fefo-label {
+    display: block;
+    width: max-content;
+    margin-top: 5px;
+    padding: 3px 6px;
+    border-radius: 999px;
+    background: #e9f8f4;
+    color: #087a61;
+    font-size: 0.56rem;
+    font-weight: 900;
+}
+
+.inventory-status-pill {
+    display: inline-flex;
+    padding: 5px 8px;
+    border-radius: 999px;
+    font-size: 0.61rem;
+    font-weight: 850;
+    white-space: nowrap;
+}
+
+.inventory-status-pill.available {
+    background: #e8f8f2;
+    color: #087a61;
+}
+
+.inventory-status-pill.expiring {
+    background: #fff4dc;
+    color: #a86200;
+}
+
+.inventory-status-pill.expired {
+    background: #ffe8e8;
+    color: #bf3232;
+}
+
+.inventory-status-pill.out {
+    background: #eff1f4;
+    color: #667085;
+}
+
+.inventory-status-pill.quarantined {
+    background: #efe9ff;
+    color: #6841c6;
+}
+
+.inventory-action-button {
+    padding: 6px 9px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #ffffff;
+    color: #475467;
+    font-size: 0.63rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.inventory-action-button:hover {
+    border-color: rgba(15, 159, 132, 0.35);
+    color: var(--primary-dark);
+}
+
+@media (max-width: 1200px) {
+    .inventory-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .inventory-workspace {
+        grid-template-columns: 1fr;
+    }
+
+    .inventory-receive-panel {
+        position: static;
+    }
+}
+
+@media (max-width: 720px) {
+    .inventory-summary-grid,
+    .inventory-form-grid,
+    .inventory-filter-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Inventory table overflow correction */
+
+.inventory-table {
+    min-width: 900px;
+}
+
+.inventory-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 6px;
+}
+
+.inventory-table th:last-child,
+.inventory-table td:last-child {
+    min-width: 105px;
+    text-align: right;
+}
+
+.inventory-action-button {
+    white-space: nowrap;
+}

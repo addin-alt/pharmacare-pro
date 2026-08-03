@@ -1,66 +1,860 @@
 @page "/inventory"
+@inject IServiceScopeFactory ScopeFactory
 
 <PageTitle>Inventory | PharmaCare Pro</PageTitle>
 
 <div class="page-heading module-heading">
     <div>
-        <span class="eyebrow">PHARMACARE PRO MODULE</span>
+        <span class="eyebrow">BATCH INVENTORY</span>
         <h1>Inventory</h1>
-        <p>Track medicine batches, quantities and expiry dates.</p>
+        <p>
+            Receive medicine batches and monitor quantities,
+            expiry dates and FEFO priority.
+        </p>
     </div>
 
-    <a class="button button-primary" href="">
+    <a class="button button-secondary" href="">
         Return to dashboard
     </a>
 </div>
 
-<section class="module-intro-card">
-    <div class="module-large-icon">▤</div>
+<section class="inventory-summary-grid">
+    <article class="inventory-summary-card">
+        <span>Total available units</span>
+        <strong>@totalAvailableUnits.ToString("N0")</strong>
+        <small>Usable inventory quantity</small>
+    </article>
 
-    <div class="module-intro-content">
-        <span class="module-status">FOUNDATION READY</span>
-        <h2>Inventory module</h2>
-        <p>
-            The interface foundation is ready. Database entities, forms,
-            validation and operational workflows will be implemented in
-            the next development stages.
-        </p>
+    <article class="inventory-summary-card">
+        <span>Active batches</span>
+        <strong>@activeBatchCount</strong>
+        <small>Available and not expired</small>
+    </article>
 
-        <div class="module-feature-grid">
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Batch-level quantity tracking</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>FEFO stock allocation</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Low-stock and expiry alerts</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Adjustments, damage and disposal records</p>
-            </div>
-        </div>
-    </div>
+    <article class="inventory-summary-card">
+        <span>Low-stock medicines</span>
+        <strong>@lowStockMedicineCount</strong>
+        <small>At or below reorder level</small>
+    </article>
+
+    <article class="inventory-summary-card">
+        <span>Expiry alerts</span>
+        <strong>@(expiringSoonCount + expiredBatchCount)</strong>
+        <small>
+            @expiringSoonCount expiring soon ·
+            @expiredBatchCount expired
+        </small>
+    </article>
 </section>
 
-<section class="dashboard-panel module-next-panel">
-    <div class="panel-heading">
-        <div>
-            <h2>Next implementation stage</h2>
-            <p>This module will be connected to Supabase PostgreSQL.</p>
+<div class="inventory-workspace">
+    <section class="dashboard-panel inventory-receive-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Receive medicine batch</h2>
+                <p>
+                    Add new stock or increase an existing batch.
+                </p>
+            </div>
         </div>
-    </div>
 
-    <div class="module-next-steps">
-        <span>Database entities</span>
-        <span>Validation rules</span>
-        <span>Create and edit forms</span>
-        <span>Search and filtering</span>
-        <span>Role permissions</span>
-        <span>Automated tests</span>
-    </div>
-</section>
+        @if (!string.IsNullOrWhiteSpace(statusMessage))
+        {
+            <div class="form-status @(statusIsError
+                ? "status-error"
+                : "status-success")">
+                @statusMessage
+            </div>
+        }
+
+        @if (medicines.Count == 0)
+        {
+            <div class="inventory-no-medicine">
+                <strong>No active medicines are available.</strong>
+                <p>
+                    Create a medicine before receiving inventory.
+                </p>
+                <a href="medicines">Open medicines</a>
+            </div>
+        }
+        else
+        {
+            <EditForm Model="formModel"
+                      OnValidSubmit="ReceiveBatchAsync"
+                      FormName="batch-receive">
+                <DataAnnotationsValidator />
+
+                <div class="inventory-form-grid">
+                    <div class="form-field form-field-wide">
+                        <label>Medicine</label>
+                        <InputSelect @bind-Value="formModel.MedicineId">
+                            <option value="">Select medicine</option>
+
+                            @foreach (var medicine in medicines)
+                            {
+                                <option value="@medicine.Id">
+                                    @medicine.BrandName ·
+                                    @medicine.GenericName ·
+                                    @medicine.Strength
+                                </option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage
+                            For="() => formModel.MedicineId" />
+                    </div>
+
+                    <div class="form-field">
+                        <label>Batch number</label>
+                        <InputText
+                            @bind-Value="formModel.BatchNumber"
+                            placeholder="Example: B240801" />
+                        <ValidationMessage
+                            For="() => formModel.BatchNumber" />
+                    </div>
+
+                    <div class="form-field">
+                        <label>Purchase reference</label>
+                        <InputText
+                            @bind-Value="formModel.PurchaseReference"
+                            placeholder="Example: PO-0001" />
+                    </div>
+
+                    <div class="form-field">
+                        <label>Manufacturing date</label>
+                        <InputDate
+                            @bind-Value="formModel.ManufacturingDate" />
+                    </div>
+
+                    <div class="form-field">
+                        <label>Expiry date</label>
+                        <InputDate
+                            @bind-Value="formModel.ExpiryDate" />
+                        <ValidationMessage
+                            For="() => formModel.ExpiryDate" />
+                    </div>
+
+                    <div class="form-field">
+                        <label>Received quantity</label>
+                        <InputNumber
+                            @bind-Value="formModel.ReceivedQuantity" />
+                        <ValidationMessage
+                            For="() => formModel.ReceivedQuantity" />
+                    </div>
+
+                    <div class="form-field">
+                        <label>Free quantity</label>
+                        <InputNumber
+                            @bind-Value="formModel.FreeQuantity" />
+                        <ValidationMessage
+                            For="() => formModel.FreeQuantity" />
+                    </div>
+
+                    <div class="form-field">
+                        <label>Purchase price</label>
+                        <InputNumber
+                            @bind-Value="formModel.PurchasePrice"
+                            step="0.01" />
+                        <ValidationMessage
+                            For="() => formModel.PurchasePrice" />
+                    </div>
+
+                    <div class="form-field">
+                        <label>Selling price</label>
+                        <InputNumber
+                            @bind-Value="formModel.SellingPrice"
+                            step="0.01" />
+                        <ValidationMessage
+                            For="() => formModel.SellingPrice" />
+                    </div>
+
+                    <div class="form-field">
+                        <label>Supplier</label>
+                        <InputText
+                            @bind-Value="formModel.SupplierName"
+                            placeholder="Supplier name" />
+                    </div>
+
+                    <div class="form-field">
+                        <label>Rack location</label>
+                        <InputText
+                            @bind-Value="formModel.RackLocation"
+                            placeholder="Example: A-01" />
+                    </div>
+                </div>
+
+                <button class="button button-primary inventory-save-button"
+                        type="submit"
+                        disabled="@isSaving">
+                    @(isSaving
+                        ? "Receiving stock..."
+                        : "Receive batch")
+                </button>
+            </EditForm>
+        }
+    </section>
+
+    <section class="dashboard-panel inventory-list-panel">
+        <div class="panel-heading inventory-list-heading">
+            <div>
+                <h2>Batch inventory</h2>
+                <p>
+                    Available stock is ordered by earliest expiry.
+                </p>
+            </div>
+
+            <span class="catalog-count">
+                @(batches.Count == 1
+                    ? "1 batch"
+                    : $"{batches.Count} batches")
+            </span>
+        </div>
+
+        <div class="inventory-filter-row">
+            <input type="search"
+                   @bind="searchText"
+                   @bind:event="oninput"
+                   placeholder="Search medicine, SKU or batch..." />
+
+            <select @bind="filterValue">
+                <option value="all">All batches</option>
+                <option value="available">Available</option>
+                <option value="expiring">Expiring soon</option>
+                <option value="expired">Expired</option>
+                <option value="out">Out of stock</option>
+                <option value="quarantined">Quarantined</option>
+            </select>
+
+            <button class="button button-primary"
+                    type="button"
+                    @onclick="LoadInventoryAsync">
+                Apply
+            </button>
+
+            <button class="button button-secondary"
+                    type="button"
+                    @onclick="ClearFiltersAsync">
+                Clear
+            </button>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="medicine-empty-state">
+                <strong>Loading inventory...</strong>
+            </div>
+        }
+        else if (batches.Count == 0)
+        {
+            <div class="medicine-empty-state">
+                <span>▤</span>
+                <strong>No inventory batches found</strong>
+                <p>
+                    Receive the first medicine batch using the form.
+                </p>
+            </div>
+        }
+        else
+        {
+            <div class="responsive-table inventory-table-wrapper">
+                <table class="inventory-table">
+                    <thead>
+                        <tr>
+                            <th>Medicine</th>
+                            <th>Batch</th>
+                            <th>Expiry</th>
+                            <th>Available</th>
+                            <th>Pricing</th>
+                            <th>Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @foreach (var batch in batches)
+                        {
+                            <tr @key="batch.Id">
+                                <td>
+                                    <div class="medicine-name-cell">
+                                        <span class="medicine-table-icon">
+                                            Rx
+                                        </span>
+
+                                        <div>
+                                            <strong>
+                                                @batch.Medicine?.BrandName
+                                            </strong>
+                                            <small>
+                                                @batch.Medicine?.GenericName ·
+                                                @batch.Medicine?.Strength
+                                            </small>
+                                        </div>
+                                    </div>
+                                </td>
+
+                                <td>
+                                    <strong>@batch.BatchNumber</strong>
+
+                                    @if (IsFefoPriority(batch))
+                                    {
+                                        <small class="fefo-label">
+                                            FEFO priority
+                                        </small>
+                                    }
+
+                                    <small class="table-secondary-text">
+                                        @(string.IsNullOrWhiteSpace(
+                                            batch.SupplierName)
+                                            ? "No supplier"
+                                            : batch.SupplierName)
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <strong>
+                                        @(batch.ExpiryDate.ToString("dd MMM yyyy"))
+                                    </strong>
+                                    <small class="table-secondary-text">
+                                        @GetExpiryDescription(batch)
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <strong>
+                                        @batch.AvailableQuantity
+                                    </strong>
+                                    <small class="table-secondary-text">
+                                        Received:
+                                        @(batch.ReceivedQuantity +
+                                          batch.FreeQuantity)
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <strong>
+                                        ৳@batch.SellingPrice.ToString("N2")
+                                    </strong>
+                                    <small class="table-secondary-text">
+                                        Cost:
+                                        ৳@batch.PurchasePrice.ToString("N2")
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <span class="inventory-status-pill
+                                        @GetStatusClass(batch)">
+                                        @GetStatusText(batch)
+                                    </span>
+                                </td>
+
+                                <td>
+                                    <button type="button"
+                                            class="inventory-action-button"
+                                            @onclick="() =>
+                                                ToggleQuarantineAsync(
+                                                    batch.Id)">
+                                        @(batch.IsQuarantined
+                                            ? "Release"
+                                            : "Quarantine")
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private List<Medicine> medicines = [];
+    private List<MedicineBatch> batches = [];
+    private BatchReceiptForm formModel = NewBatchForm();
+
+    private string searchText = string.Empty;
+    private string filterValue = "all";
+    private string? statusMessage;
+
+    private int totalAvailableUnits;
+    private int activeBatchCount;
+    private int lowStockMedicineCount;
+    private int expiringSoonCount;
+    private int expiredBatchCount;
+
+    private bool statusIsError;
+    private bool isLoading = true;
+    private bool isSaving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInventoryAsync();
+    }
+
+    private async Task LoadInventoryAsync()
+    {
+        isLoading = true;
+
+        using var scope = ScopeFactory.CreateScope();
+
+        var database = scope.ServiceProvider
+            .GetRequiredService<ApplicationDbContext>();
+
+        medicines = await database.Medicines
+            .AsNoTracking()
+            .Where(medicine => medicine.IsActive)
+            .OrderBy(medicine => medicine.BrandName)
+            .ThenBy(medicine => medicine.Strength)
+            .ToListAsync();
+
+        var today = DateTime.UtcNow.Date;
+        var expiryWarningDate = today.AddDays(90);
+
+        totalAvailableUnits = await database.MedicineBatches
+            .Where(batch =>
+                !batch.IsQuarantined &&
+                batch.ExpiryDate >= today)
+            .SumAsync(batch => batch.AvailableQuantity);
+
+        activeBatchCount = await database.MedicineBatches
+            .CountAsync(batch =>
+                !batch.IsQuarantined &&
+                batch.AvailableQuantity > 0 &&
+                batch.ExpiryDate >= today);
+
+        expiringSoonCount = await database.MedicineBatches
+            .CountAsync(batch =>
+                batch.AvailableQuantity > 0 &&
+                !batch.IsQuarantined &&
+                batch.ExpiryDate >= today &&
+                batch.ExpiryDate <= expiryWarningDate);
+
+        expiredBatchCount = await database.MedicineBatches
+            .CountAsync(batch =>
+                batch.AvailableQuantity > 0 &&
+                batch.ExpiryDate < today);
+
+        lowStockMedicineCount = await database.Medicines
+            .Where(medicine => medicine.IsActive)
+            .Select(medicine => new
+            {
+                medicine.ReorderLevel,
+                AvailableQuantity = medicine.Batches
+                    .Where(batch =>
+                        !batch.IsQuarantined &&
+                        batch.ExpiryDate >= today)
+                    .Sum(batch =>
+                        (int?)batch.AvailableQuantity) ?? 0,
+            })
+            .CountAsync(item =>
+                item.AvailableQuantity <= item.ReorderLevel);
+
+        IQueryable<MedicineBatch> query =
+            database.MedicineBatches
+                .AsNoTracking()
+                .Include(batch => batch.Medicine);
+
+        if (!string.IsNullOrWhiteSpace(searchText))
+        {
+            var pattern = $"%{searchText.Trim()}%";
+
+            query = query.Where(batch =>
+                EF.Functions.ILike(
+                    batch.BatchNumber,
+                    pattern) ||
+                EF.Functions.ILike(
+                    batch.Medicine!.BrandName,
+                    pattern) ||
+                EF.Functions.ILike(
+                    batch.Medicine.GenericName,
+                    pattern) ||
+                EF.Functions.ILike(
+                    batch.Medicine.Sku,
+                    pattern));
+        }
+
+        query = filterValue switch
+        {
+            "available" => query.Where(batch =>
+                batch.AvailableQuantity > 0 &&
+                !batch.IsQuarantined &&
+                batch.ExpiryDate >= today),
+
+            "expiring" => query.Where(batch =>
+                batch.AvailableQuantity > 0 &&
+                !batch.IsQuarantined &&
+                batch.ExpiryDate >= today &&
+                batch.ExpiryDate <= expiryWarningDate),
+
+            "expired" => query.Where(batch =>
+                batch.ExpiryDate < today),
+
+            "out" => query.Where(batch =>
+                batch.AvailableQuantity == 0),
+
+            "quarantined" => query.Where(batch =>
+                batch.IsQuarantined),
+
+            _ => query,
+        };
+
+        batches = await query
+            .OrderBy(batch => batch.ExpiryDate)
+            .ThenBy(batch => batch.Medicine!.BrandName)
+            .ThenBy(batch => batch.BatchNumber)
+            .ToListAsync();
+
+        isLoading = false;
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        searchText = string.Empty;
+        filterValue = "all";
+
+        await LoadInventoryAsync();
+    }
+
+    private async Task ReceiveBatchAsync()
+    {
+        isSaving = true;
+        statusMessage = null;
+        statusIsError = false;
+
+        try
+        {
+            var medicineId = formModel.MedicineId!.Value;
+            var batchNumber = formModel.BatchNumber.Trim();
+            var expiryDate = formModel.ExpiryDate!.Value.Date;
+            var receivedUnits =
+                formModel.ReceivedQuantity +
+                formModel.FreeQuantity;
+
+            using var scope = ScopeFactory.CreateScope();
+
+            var database = scope.ServiceProvider
+                .GetRequiredService<ApplicationDbContext>();
+
+            var medicine = await database.Medicines
+                .SingleOrDefaultAsync(item =>
+                    item.Id == medicineId &&
+                    item.IsActive);
+
+            if (medicine is null)
+            {
+                statusIsError = true;
+                statusMessage =
+                    "The selected medicine is no longer available.";
+                return;
+            }
+
+            var existingBatch = await database.MedicineBatches
+                .SingleOrDefaultAsync(batch =>
+                    batch.MedicineId == medicineId &&
+                    EF.Functions.ILike(
+                        batch.BatchNumber,
+                        batchNumber));
+
+            MedicineBatch batch;
+
+            if (existingBatch is not null)
+            {
+                if (existingBatch.ExpiryDate.Date != expiryDate)
+                {
+                    statusIsError = true;
+                    statusMessage =
+                        "This batch number already exists with a " +
+                        "different expiry date.";
+                    return;
+                }
+
+                existingBatch.ReceivedQuantity +=
+                    formModel.ReceivedQuantity;
+
+                existingBatch.FreeQuantity +=
+                    formModel.FreeQuantity;
+
+                existingBatch.AvailableQuantity += receivedUnits;
+                existingBatch.PurchasePrice =
+                    formModel.PurchasePrice;
+
+                existingBatch.SellingPrice =
+                    formModel.SellingPrice;
+
+                existingBatch.SupplierName =
+                    NormalizeOptional(formModel.SupplierName);
+
+                existingBatch.PurchaseReference =
+                    NormalizeOptional(
+                        formModel.PurchaseReference);
+
+                existingBatch.RackLocation =
+                    NormalizeOptional(formModel.RackLocation);
+
+                existingBatch.UpdatedAtUtc = DateTime.UtcNow;
+
+                batch = existingBatch;
+            }
+            else
+            {
+                batch = new MedicineBatch
+                {
+                    MedicineId = medicineId,
+                    BatchNumber = batchNumber,
+                    ManufacturingDate =
+                        formModel.ManufacturingDate?.Date,
+                    ExpiryDate = expiryDate,
+                    ReceivedQuantity =
+                        formModel.ReceivedQuantity,
+                    FreeQuantity =
+                        formModel.FreeQuantity,
+                    AvailableQuantity = receivedUnits,
+                    PurchasePrice = formModel.PurchasePrice,
+                    SellingPrice = formModel.SellingPrice,
+                    SupplierName =
+                        NormalizeOptional(
+                            formModel.SupplierName),
+                    PurchaseReference =
+                        NormalizeOptional(
+                            formModel.PurchaseReference),
+                    RackLocation =
+                        NormalizeOptional(
+                            formModel.RackLocation),
+                    CreatedAtUtc = DateTime.UtcNow,
+                    UpdatedAtUtc = DateTime.UtcNow,
+                };
+
+                database.MedicineBatches.Add(batch);
+            }
+
+            database.StockMovements.Add(
+                new StockMovement
+                {
+                    MedicineBatch = batch,
+                    MovementType =
+                        StockMovementType.PurchaseReceipt,
+                    QuantityChange = receivedUnits,
+                    BalanceAfter = batch.AvailableQuantity,
+                    ReferenceNumber =
+                        NormalizeOptional(
+                            formModel.PurchaseReference),
+                    Notes = "Medicine batch received.",
+                    CreatedAtUtc = DateTime.UtcNow,
+                });
+
+            await database.SaveChangesAsync();
+
+            statusMessage =
+                $"{medicine.BrandName} batch " +
+                $"{batch.BatchNumber} was received successfully.";
+
+            formModel = NewBatchForm();
+
+            await LoadInventoryAsync();
+        }
+        catch (DbUpdateException)
+        {
+            statusIsError = true;
+            statusMessage =
+                "The batch could not be saved. Check the values.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task ToggleQuarantineAsync(Guid batchId)
+    {
+        using var scope = ScopeFactory.CreateScope();
+
+        var database = scope.ServiceProvider
+            .GetRequiredService<ApplicationDbContext>();
+
+        var batch = await database.MedicineBatches
+            .Include(item => item.Medicine)
+            .SingleOrDefaultAsync(item => item.Id == batchId);
+
+        if (batch is null)
+        {
+            return;
+        }
+
+        batch.IsQuarantined = !batch.IsQuarantined;
+        batch.UpdatedAtUtc = DateTime.UtcNow;
+
+        await database.SaveChangesAsync();
+
+        statusIsError = false;
+        statusMessage = batch.IsQuarantined
+            ? $"{batch.Medicine?.BrandName} batch was quarantined."
+            : $"{batch.Medicine?.BrandName} batch was released.";
+
+        await LoadInventoryAsync();
+    }
+
+    private bool IsFefoPriority(MedicineBatch batch)
+    {
+        return batches
+            .Where(item =>
+                item.MedicineId == batch.MedicineId &&
+                item.AvailableQuantity > 0 &&
+                !item.IsQuarantined &&
+                item.ExpiryDate.Date >= DateTime.UtcNow.Date)
+            .OrderBy(item => item.ExpiryDate)
+            .ThenBy(item => item.CreatedAtUtc)
+            .FirstOrDefault()?.Id == batch.Id;
+    }
+
+    private static string GetStatusText(MedicineBatch batch)
+    {
+        var today = DateTime.UtcNow.Date;
+
+        if (batch.IsQuarantined)
+        {
+            return "Quarantined";
+        }
+
+        if (batch.ExpiryDate.Date < today)
+        {
+            return "Expired";
+        }
+
+        if (batch.AvailableQuantity == 0)
+        {
+            return "Out of stock";
+        }
+
+        if (batch.ExpiryDate.Date <= today.AddDays(90))
+        {
+            return "Expiring soon";
+        }
+
+        return "Available";
+    }
+
+    private static string GetStatusClass(MedicineBatch batch)
+    {
+        return GetStatusText(batch) switch
+        {
+            "Quarantined" => "quarantined",
+            "Expired" => "expired",
+            "Out of stock" => "out",
+            "Expiring soon" => "expiring",
+            _ => "available",
+        };
+    }
+
+    private static string GetExpiryDescription(
+        MedicineBatch batch)
+    {
+        var days = (batch.ExpiryDate.Date -
+                    DateTime.UtcNow.Date).Days;
+
+        return days switch
+        {
+            < 0 => $"{Math.Abs(days)} days expired",
+            0 => "Expires today",
+            1 => "Expires tomorrow",
+            _ => $"{days} days remaining",
+        };
+    }
+
+    private static BatchReceiptForm NewBatchForm()
+    {
+        return new BatchReceiptForm
+        {
+            ManufacturingDate = DateTime.Today,
+            ExpiryDate = DateTime.Today.AddYears(2),
+            ReceivedQuantity = 1,
+        };
+    }
+
+    private static string? NormalizeOptional(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Trim();
+    }
+
+    private sealed class BatchReceiptForm :
+        IValidatableObject
+    {
+        [Required(ErrorMessage = "Medicine is required.")]
+        public Guid? MedicineId { get; set; }
+
+        [Required(ErrorMessage = "Batch number is required.")]
+        [StringLength(80)]
+        public string BatchNumber { get; set; } =
+            string.Empty;
+
+        [StringLength(80)]
+        public string? PurchaseReference { get; set; }
+
+        public DateTime? ManufacturingDate { get; set; }
+
+        [Required(ErrorMessage = "Expiry date is required.")]
+        public DateTime? ExpiryDate { get; set; }
+
+        [Range(
+            1,
+            10_000_000,
+            ErrorMessage =
+                "Received quantity must be at least 1.")]
+        public int ReceivedQuantity { get; set; }
+
+        [Range(0, 10_000_000)]
+        public int FreeQuantity { get; set; }
+
+        [Range(typeof(decimal), "0", "999999999")]
+        public decimal PurchasePrice { get; set; }
+
+        [Range(typeof(decimal), "0", "999999999")]
+        public decimal SellingPrice { get; set; }
+
+        [StringLength(120)]
+        public string? SupplierName { get; set; }
+
+        [StringLength(50)]
+        public string? RackLocation { get; set; }
+
+        public IEnumerable<ValidationResult> Validate(
+            ValidationContext validationContext)
+        {
+            if (MedicineId is null ||
+                MedicineId == Guid.Empty)
+            {
+                yield return new ValidationResult(
+                    "Medicine is required.",
+                    [nameof(MedicineId)]);
+            }
+
+            if (ExpiryDate.HasValue &&
+                ExpiryDate.Value.Date <= DateTime.Today)
+            {
+                yield return new ValidationResult(
+                    "New stock must have a future expiry date.",
+                    [nameof(ExpiryDate)]);
+            }
+
+            if (ManufacturingDate.HasValue &&
+                ExpiryDate.HasValue &&
+                ExpiryDate.Value.Date <=
+                ManufacturingDate.Value.Date)
+            {
+                yield return new ValidationResult(
+                    "Expiry date must be after manufacturing date.",
+                    [
+                        nameof(ExpiryDate),
+                        nameof(ManufacturingDate),
+                    ]);
+            }
+
+            if (SellingPrice < PurchasePrice)
+            {
+                yield return new ValidationResult(
+                    "Selling price cannot be below purchase price.",
+                    [nameof(SellingPrice)]);
+            }
+        }
+    }
+}

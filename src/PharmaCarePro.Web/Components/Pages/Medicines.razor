@@ -457,11 +457,20 @@
             return;
         }
 
-        database.Medicines.Remove(medicine);
-        await database.SaveChangesAsync();
+        try
+        {
+            database.Medicines.Remove(medicine);
+            await database.SaveChangesAsync();
 
-        statusIsError = false;
-        statusMessage = $"{medicine.BrandName} was deleted.";
+            statusIsError = false;
+            statusMessage = $"{medicine.BrandName} was deleted.";
+        }
+        catch (DbUpdateException)
+        {
+            statusIsError = true;
+            statusMessage =
+                "This medicine has inventory batches and cannot be deleted.";
+        }
 
         await LoadMedicinesAsync();
     }

@@ -57,6 +57,9 @@ public sealed class Medicine
 
     public bool IsActive { get; set; } = true;
 
+    public ICollection<MedicineBatch> Batches { get; set; } =
+        new List<MedicineBatch>();
+
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
