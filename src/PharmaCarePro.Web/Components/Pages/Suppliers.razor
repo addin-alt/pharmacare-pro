@@ -1,66 +1,518 @@
 @page "/suppliers"
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.EntityFrameworkCore
+@using PharmaCarePro.Domain.Entities
+@using PharmaCarePro.Web.Data
+@inject IServiceScopeFactory ScopeFactory
 
 <PageTitle>Suppliers | PharmaCare Pro</PageTitle>
 
 <div class="page-heading module-heading">
     <div>
-        <span class="eyebrow">PHARMACARE PRO MODULE</span>
+        <span class="eyebrow">SUPPLIER MANAGEMENT</span>
         <h1>Suppliers</h1>
-        <p>Manage medicine suppliers and their accounts.</p>
+        <p>
+            Manage supplier contact information, account balances
+            and operational status.
+        </p>
     </div>
 
-    <a class="button button-primary" href="">
+    <a class="button button-secondary" href="">
         Return to dashboard
     </a>
 </div>
 
-<section class="module-intro-card">
-    <div class="module-large-icon">▱</div>
-
-    <div class="module-intro-content">
-        <span class="module-status">FOUNDATION READY</span>
-        <h2>Suppliers module</h2>
-        <p>
-            The interface foundation is ready. Database entities, forms,
-            validation and operational workflows will be implemented in
-            the next development stages.
-        </p>
-
-        <div class="module-feature-grid">
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Supplier contact and business details</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Purchase and return history</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Payments and outstanding balances</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Supplier account ledger</p>
-            </div>
-        </div>
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <div class="form-status supplier-status
+         @(statusIsError ? "status-error" : "status-success")">
+        @statusMessage
     </div>
+}
+
+<section class="supplier-summary-grid">
+    <article class="supplier-summary-card">
+        <span>Total suppliers</span>
+        <strong>@suppliers.Count</strong>
+        <small>All registered suppliers</small>
+    </article>
+
+    <article class="supplier-summary-card">
+        <span>Active suppliers</span>
+        <strong>@suppliers.Count(supplier => supplier.IsActive)</strong>
+        <small>Available for purchasing</small>
+    </article>
+
+    <article class="supplier-summary-card">
+        <span>Inactive suppliers</span>
+        <strong>@suppliers.Count(supplier => !supplier.IsActive)</strong>
+        <small>Temporarily unavailable</small>
+    </article>
+
+    <article class="supplier-summary-card">
+        <span>Outstanding balance</span>
+        <strong>
+            ৳@suppliers.Sum(supplier => supplier.CurrentBalance).ToString("N2")
+        </strong>
+        <small>Current supplier payable</small>
+    </article>
 </section>
 
-<section class="dashboard-panel module-next-panel">
-    <div class="panel-heading">
-        <div>
-            <h2>Next implementation stage</h2>
-            <p>This module will be connected to Supabase PostgreSQL.</p>
+<div class="supplier-workspace">
+    <section class="dashboard-panel supplier-form-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Add supplier</h2>
+                <p>Create a supplier account for future purchases.</p>
+            </div>
         </div>
-    </div>
 
-    <div class="module-next-steps">
-        <span>Database entities</span>
-        <span>Validation rules</span>
-        <span>Create and edit forms</span>
-        <span>Search and filtering</span>
-        <span>Role permissions</span>
-        <span>Automated tests</span>
-    </div>
-</section>
+        <EditForm Model="form"
+                  OnValidSubmit="CreateSupplierAsync"
+                  FormName="supplier-create">
+            <DataAnnotationsValidator />
+
+            <div class="supplier-form-grid">
+                <div class="form-field">
+                    <label>Supplier code</label>
+                    <InputText @bind-Value="form.SupplierCode"
+                               placeholder="SUP-0001" />
+                    <ValidationMessage
+                        For="() => form.SupplierCode" />
+                </div>
+
+                <div class="form-field">
+                    <label>Supplier name</label>
+                    <InputText @bind-Value="form.Name"
+                               placeholder="Company name" />
+                    <ValidationMessage
+                        For="() => form.Name" />
+                </div>
+
+                <div class="form-field">
+                    <label>Contact person</label>
+                    <InputText @bind-Value="form.ContactPerson"
+                               placeholder="Sales representative" />
+                    <ValidationMessage
+                        For="() => form.ContactPerson" />
+                </div>
+
+                <div class="form-field">
+                    <label>Phone number</label>
+                    <InputText @bind-Value="form.Phone"
+                               placeholder="01700000000" />
+                    <ValidationMessage
+                        For="() => form.Phone" />
+                </div>
+
+                <div class="form-field">
+                    <label>Email address</label>
+                    <InputText @bind-Value="form.Email"
+                               placeholder="sales@example.com" />
+                    <ValidationMessage
+                        For="() => form.Email" />
+                </div>
+
+                <div class="form-field">
+                    <label>Opening balance</label>
+                    <InputNumber @bind-Value="form.OpeningBalance"
+                                 min="0"
+                                 step="0.01" />
+                    <ValidationMessage
+                        For="() => form.OpeningBalance" />
+                </div>
+
+                <div class="form-field">
+                    <label>Registration number</label>
+                    <InputText
+                        @bind-Value="form.RegistrationNumber"
+                        placeholder="Optional" />
+                    <ValidationMessage
+                        For="() => form.RegistrationNumber" />
+                </div>
+
+                <div class="form-field">
+                    <label>Tax identification number</label>
+                    <InputText
+                        @bind-Value="form.TaxIdentificationNumber"
+                        placeholder="Optional" />
+                    <ValidationMessage
+                        For="() => form.TaxIdentificationNumber" />
+                </div>
+
+                <div class="form-field supplier-address-field">
+                    <label>Business address</label>
+                    <InputTextArea @bind-Value="form.Address"
+                                   rows="3"
+                                   placeholder="Supplier business address" />
+                    <ValidationMessage
+                        For="() => form.Address" />
+                </div>
+            </div>
+
+            <label class="supplier-active-field">
+                <InputCheckbox @bind-Value="form.IsActive" />
+                <span>Supplier is active</span>
+            </label>
+
+            <button class="button button-primary supplier-save-button"
+                    type="submit"
+                    disabled="@isSaving">
+                @(isSaving ? "Saving supplier..." : "Save supplier")
+            </button>
+        </EditForm>
+    </section>
+
+    <section class="dashboard-panel supplier-list-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Supplier directory</h2>
+                <p>Search and manage registered suppliers.</p>
+            </div>
+        </div>
+
+        <input class="supplier-search"
+               type="search"
+               @bind="searchText"
+               @bind:event="oninput"
+               placeholder="Search code, name, phone or contact..." />
+
+        @if (isLoading)
+        {
+            <div class="medicine-empty-state">
+                <strong>Loading suppliers...</strong>
+            </div>
+        }
+        else if (!FilteredSuppliers.Any())
+        {
+            <div class="medicine-empty-state supplier-empty-state">
+                <span>▱</span>
+                <strong>No suppliers found</strong>
+                <p>Add the first supplier using the form.</p>
+            </div>
+        }
+        else
+        {
+            <div class="supplier-card-list">
+                @foreach (var supplier in FilteredSuppliers)
+                {
+                    <article class="supplier-card" @key="supplier.Id">
+                        <div class="supplier-card-heading">
+                            <div class="supplier-card-identity">
+                                <span class="supplier-avatar">
+                                    @GetSupplierInitial(supplier.Name)
+                                </span>
+
+                                <div>
+                                    <strong>@supplier.Name</strong>
+                                    <small>@supplier.SupplierCode</small>
+                                </div>
+                            </div>
+
+                            <span class="supplier-status-pill
+                                @(supplier.IsActive
+                                    ? "supplier-status-active"
+                                    : "supplier-status-inactive")">
+                                @(supplier.IsActive ? "Active" : "Inactive")
+                            </span>
+                        </div>
+
+                        <div class="supplier-details-grid">
+                            <div>
+                                <span>Contact person</span>
+                                <strong>
+                                    @(supplier.ContactPerson ??
+                                        "Not provided")
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Phone</span>
+                                <strong>
+                                    @(supplier.Phone ?? "Not provided")
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Email</span>
+                                <strong>
+                                    @(supplier.Email ?? "Not provided")
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Current balance</span>
+                                <strong>
+                                    ৳@supplier.CurrentBalance.ToString("N2")
+                                </strong>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(supplier.Address))
+                        {
+                            <p class="supplier-address">
+                                @supplier.Address
+                            </p>
+                        }
+
+                        <div class="supplier-card-footer">
+                            <small>
+                                Added
+                                @(supplier.CreatedAtUtc
+                                    .ToLocalTime()
+                                    .ToString("dd MMM yyyy"))
+                            </small>
+
+                            <button type="button"
+                                    class="supplier-toggle-button
+                                        @(supplier.IsActive
+                                            ? "supplier-deactivate-button"
+                                            : "supplier-activate-button")"
+                                    disabled="@isUpdating"
+                                    @onclick="() =>
+                                        ToggleSupplierAsync(supplier.Id)">
+                                @(supplier.IsActive
+                                    ? "Deactivate"
+                                    : "Activate")
+                            </button>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private List<Supplier> suppliers = [];
+    private SupplierForm form = new();
+
+    private string searchText = string.Empty;
+    private string? statusMessage;
+
+    private bool statusIsError;
+    private bool isLoading = true;
+    private bool isSaving;
+    private bool isUpdating;
+
+    private IEnumerable<Supplier> FilteredSuppliers
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(searchText))
+            {
+                return suppliers;
+            }
+
+            var search = searchText.Trim();
+
+            return suppliers.Where(supplier =>
+                supplier.SupplierCode.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ||
+                supplier.Name.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ||
+                (supplier.ContactPerson?.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (supplier.Phone?.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (supplier.Email?.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSuppliersAsync();
+    }
+
+    private async Task LoadSuppliersAsync()
+    {
+        isLoading = true;
+
+        using var scope = ScopeFactory.CreateScope();
+
+        var database = scope.ServiceProvider
+            .GetRequiredService<ApplicationDbContext>();
+
+        suppliers = await database.Suppliers
+            .AsNoTracking()
+            .OrderByDescending(supplier => supplier.IsActive)
+            .ThenBy(supplier => supplier.Name)
+            .ToListAsync();
+
+        isLoading = false;
+    }
+
+    private async Task CreateSupplierAsync()
+    {
+        isSaving = true;
+        statusMessage = null;
+        statusIsError = false;
+
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+
+            var database = scope.ServiceProvider
+                .GetRequiredService<ApplicationDbContext>();
+
+            var normalizedCode =
+                form.SupplierCode.Trim().ToUpperInvariant();
+
+            var duplicateCode = await database.Suppliers
+                .AnyAsync(supplier =>
+                    supplier.SupplierCode == normalizedCode);
+
+            if (duplicateCode)
+            {
+                statusIsError = true;
+                statusMessage =
+                    $"Supplier code {normalizedCode} already exists.";
+                return;
+            }
+
+            var now = DateTime.UtcNow;
+
+            var supplier = new Supplier
+            {
+                SupplierCode = normalizedCode,
+                Name = form.Name.Trim(),
+                ContactPerson = Normalize(form.ContactPerson),
+                Phone = Normalize(form.Phone),
+                Email = Normalize(form.Email),
+                Address = Normalize(form.Address),
+                RegistrationNumber =
+                    Normalize(form.RegistrationNumber),
+                TaxIdentificationNumber =
+                    Normalize(form.TaxIdentificationNumber),
+                OpeningBalance =
+                    Math.Round(form.OpeningBalance, 2),
+                CurrentBalance =
+                    Math.Round(form.OpeningBalance, 2),
+                IsActive = form.IsActive,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            };
+
+            database.Suppliers.Add(supplier);
+
+            await database.SaveChangesAsync();
+
+            statusMessage =
+                $"Supplier {supplier.Name} was added successfully.";
+
+            form = new SupplierForm();
+
+            await LoadSuppliersAsync();
+        }
+        catch (DbUpdateException)
+        {
+            statusIsError = true;
+            statusMessage =
+                "The supplier could not be saved. " +
+                "Check the supplier code and try again.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task ToggleSupplierAsync(Guid supplierId)
+    {
+        isUpdating = true;
+        statusMessage = null;
+        statusIsError = false;
+
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+
+            var database = scope.ServiceProvider
+                .GetRequiredService<ApplicationDbContext>();
+
+            var supplier = await database.Suppliers
+                .SingleOrDefaultAsync(item => item.Id == supplierId);
+
+            if (supplier is null)
+            {
+                statusIsError = true;
+                statusMessage = "Supplier was not found.";
+                return;
+            }
+
+            supplier.IsActive = !supplier.IsActive;
+            supplier.UpdatedAtUtc = DateTime.UtcNow;
+
+            await database.SaveChangesAsync();
+
+            statusMessage =
+                $"{supplier.Name} is now " +
+                $"{(supplier.IsActive ? "active" : "inactive")}.";
+
+            await LoadSuppliersAsync();
+        }
+        finally
+        {
+            isUpdating = false;
+        }
+    }
+
+    private static string GetSupplierInitial(string name)
+    {
+        return string.IsNullOrWhiteSpace(name)
+            ? "S"
+            : name.Trim()[0].ToString().ToUpperInvariant();
+    }
+
+    private static string? Normalize(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Trim();
+    }
+
+    private sealed class SupplierForm
+    {
+        [Required(ErrorMessage = "Supplier code is required.")]
+        [StringLength(30)]
+        [RegularExpression(
+            "^[A-Za-z0-9][A-Za-z0-9-]*$",
+            ErrorMessage =
+                "Use letters, numbers and hyphens only.")]
+        public string SupplierCode { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Supplier name is required.")]
+        [StringLength(150)]
+        public string Name { get; set; } = string.Empty;
+
+        [StringLength(120)]
+        public string? ContactPerson { get; set; }
+
+        [StringLength(30)]
+        public string? Phone { get; set; }
+
+        [EmailAddress(ErrorMessage = "Enter a valid email address.")]
+        [StringLength(160)]
+        public string? Email { get; set; }
+
+        [StringLength(300)]
+        public string? Address { get; set; }
+
+        [StringLength(80)]
+        public string? RegistrationNumber { get; set; }
+
+        [StringLength(80)]
+        public string? TaxIdentificationNumber { get; set; }
+
+        [Range(typeof(decimal), "0", "999999999")]
+        public decimal OpeningBalance { get; set; }
+
+        public bool IsActive { get; set; } = true;
+    }
+}

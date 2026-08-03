@@ -20,6 +20,8 @@ public class ApplicationDbContext(
 
     public DbSet<SaleItem> SaleItems => Set<SaleItem>();
 
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -187,6 +189,37 @@ public class ApplicationDbContext(
                 .WithMany()
                 .HasForeignKey(item => item.MedicineBatchId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<Supplier>(entity =>
+        {
+            entity.ToTable(
+                "Suppliers",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_Suppliers_OpeningBalance",
+                        "\"OpeningBalance\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_Suppliers_CurrentBalance",
+                        "\"CurrentBalance\" >= 0");
+                });
+
+            entity.HasKey(supplier => supplier.Id);
+
+            entity.HasIndex(supplier => supplier.SupplierCode)
+                .IsUnique();
+
+            entity.HasIndex(supplier => supplier.Name);
+            entity.HasIndex(supplier => supplier.Phone);
+            entity.HasIndex(supplier => supplier.IsActive);
+
+            entity.Property(supplier => supplier.OpeningBalance)
+                .HasPrecision(18, 2);
+
+            entity.Property(supplier => supplier.CurrentBalance)
+                .HasPrecision(18, 2);
         });
 
     }
