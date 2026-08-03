@@ -1,66 +1,484 @@
 @page "/medicines"
+@inject IServiceScopeFactory ScopeFactory
 
 <PageTitle>Medicines | PharmaCare Pro</PageTitle>
 
 <div class="page-heading module-heading">
     <div>
-        <span class="eyebrow">PHARMACARE PRO MODULE</span>
+        <span class="eyebrow">PHARMACY CATALOG</span>
         <h1>Medicines</h1>
-        <p>Manage the complete pharmacy medicine catalog.</p>
+        <p>Create, search and manage the pharmacy medicine catalog.</p>
     </div>
 
-    <a class="button button-primary" href="">
+    <a class="button button-secondary" href="">
         Return to dashboard
     </a>
 </div>
 
-<section class="module-intro-card">
-    <div class="module-large-icon">✚</div>
+<section class="medicine-summary-grid">
+    <article class="medicine-summary-card">
+        <span>Total medicines</span>
+        <strong>@medicines.Count</strong>
+        <small>Catalog records shown</small>
+    </article>
 
-    <div class="module-intro-content">
-        <span class="module-status">FOUNDATION READY</span>
-        <h2>Medicines module</h2>
-        <p>
-            The interface foundation is ready. Database entities, forms,
-            validation and operational workflows will be implemented in
-            the next development stages.
-        </p>
+    <article class="medicine-summary-card">
+        <span>Active medicines</span>
+        <strong>@medicines.Count(item => item.IsActive)</strong>
+        <small>Available for pharmacy use</small>
+    </article>
 
-        <div class="module-feature-grid">
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Brand and generic medicine information</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Strength, dosage form and manufacturer</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Barcode, pricing and tax configuration</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Prescription and storage requirements</p>
-            </div>
-        </div>
-    </div>
+    <article class="medicine-summary-card">
+        <span>Prescription items</span>
+        <strong>@medicines.Count(item => item.RequiresPrescription)</strong>
+        <small>Require pharmacist attention</small>
+    </article>
+
+    <article class="medicine-summary-card">
+        <span>Database</span>
+        <strong class="medicine-database-status">Live</strong>
+        <small>Stored in Supabase PostgreSQL</small>
+    </article>
 </section>
 
-<section class="dashboard-panel module-next-panel">
-    <div class="panel-heading">
-        <div>
-            <h2>Next implementation stage</h2>
-            <p>This module will be connected to Supabase PostgreSQL.</p>
+<div class="medicine-workspace">
+    <section class="dashboard-panel medicine-form-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Add medicine</h2>
+                <p>Create a new catalog item.</p>
+            </div>
         </div>
-    </div>
 
-    <div class="module-next-steps">
-        <span>Database entities</span>
-        <span>Validation rules</span>
-        <span>Create and edit forms</span>
-        <span>Search and filtering</span>
-        <span>Role permissions</span>
-        <span>Automated tests</span>
-    </div>
-</section>
+        @if (!string.IsNullOrWhiteSpace(statusMessage))
+        {
+            <div class="form-status @(statusIsError ? "status-error" : "status-success")">
+                @statusMessage
+            </div>
+        }
+
+        <EditForm Model="formModel"
+                  OnValidSubmit="CreateMedicineAsync"
+                  FormName="medicine-create">
+            <DataAnnotationsValidator />
+
+            <div class="medicine-form-grid">
+                <div class="form-field">
+                    <label>Brand name</label>
+                    <InputText @bind-Value="formModel.BrandName"
+                               placeholder="Example: Napa" />
+                    <ValidationMessage For="() => formModel.BrandName" />
+                </div>
+
+                <div class="form-field">
+                    <label>Generic name</label>
+                    <InputText @bind-Value="formModel.GenericName"
+                               placeholder="Example: Paracetamol" />
+                    <ValidationMessage For="() => formModel.GenericName" />
+                </div>
+
+                <div class="form-field">
+                    <label>Strength</label>
+                    <InputText @bind-Value="formModel.Strength"
+                               placeholder="Example: 500 mg" />
+                    <ValidationMessage For="() => formModel.Strength" />
+                </div>
+
+                <div class="form-field">
+                    <label>Dosage form</label>
+                    <InputSelect @bind-Value="formModel.DosageForm">
+                        <option value="">Select dosage form</option>
+                        <option>Tablet</option>
+                        <option>Capsule</option>
+                        <option>Syrup</option>
+                        <option>Suspension</option>
+                        <option>Injection</option>
+                        <option>Cream</option>
+                        <option>Ointment</option>
+                        <option>Drops</option>
+                        <option>Inhaler</option>
+                        <option>Powder</option>
+                        <option>Other</option>
+                    </InputSelect>
+                    <ValidationMessage For="() => formModel.DosageForm" />
+                </div>
+
+                <div class="form-field">
+                    <label>Category</label>
+                    <InputText @bind-Value="formModel.Category"
+                               placeholder="Example: Analgesic" />
+                </div>
+
+                <div class="form-field">
+                    <label>Manufacturer</label>
+                    <InputText @bind-Value="formModel.Manufacturer"
+                               placeholder="Manufacturer name" />
+                </div>
+
+                <div class="form-field">
+                    <label>SKU</label>
+                    <InputText @bind-Value="formModel.Sku"
+                               placeholder="Example: MED-0001" />
+                    <ValidationMessage For="() => formModel.Sku" />
+                </div>
+
+                <div class="form-field">
+                    <label>Barcode</label>
+                    <InputText @bind-Value="formModel.Barcode"
+                               placeholder="Optional barcode" />
+                </div>
+
+                <div class="form-field">
+                    <label>Purchase price</label>
+                    <InputNumber @bind-Value="formModel.PurchasePrice"
+                                 step="0.01" />
+                    <ValidationMessage For="() => formModel.PurchasePrice" />
+                </div>
+
+                <div class="form-field">
+                    <label>Selling price</label>
+                    <InputNumber @bind-Value="formModel.SellingPrice"
+                                 step="0.01" />
+                    <ValidationMessage For="() => formModel.SellingPrice" />
+                </div>
+
+                <div class="form-field">
+                    <label>Maximum retail price</label>
+                    <InputNumber @bind-Value="formModel.MaximumRetailPrice"
+                                 step="0.01" />
+                    <ValidationMessage For="() => formModel.MaximumRetailPrice" />
+                </div>
+
+                <div class="form-field">
+                    <label>Reorder level</label>
+                    <InputNumber @bind-Value="formModel.ReorderLevel" />
+                    <ValidationMessage For="() => formModel.ReorderLevel" />
+                </div>
+
+                <div class="form-field">
+                    <label>Rack location</label>
+                    <InputText @bind-Value="formModel.RackLocation"
+                               placeholder="Example: A-01" />
+                </div>
+
+                <div class="form-field form-field-wide">
+                    <label>Storage instructions</label>
+                    <InputTextArea @bind-Value="formModel.StorageInstructions"
+                                   rows="3"
+                                   placeholder="Example: Store below 30°C in a dry place." />
+                </div>
+
+                <label class="medicine-checkbox form-field-wide">
+                    <InputCheckbox @bind-Value="formModel.RequiresPrescription" />
+                    <span>
+                        <strong>Prescription required</strong>
+                        <small>Mark this medicine for pharmacist verification.</small>
+                    </span>
+                </label>
+            </div>
+
+            <button class="button button-primary medicine-save-button"
+                    type="submit"
+                    disabled="@isSaving">
+                @(isSaving ? "Saving medicine..." : "Save medicine")
+            </button>
+        </EditForm>
+    </section>
+
+    <section class="dashboard-panel medicine-list-panel">
+        <div class="panel-heading medicine-list-heading">
+            <div>
+                <h2>Medicine catalog</h2>
+                <p>Search medicines stored in Supabase.</p>
+            </div>
+
+            <span class="catalog-count">@medicines.Count records</span>
+        </div>
+
+        <div class="medicine-search-row">
+            <input type="search"
+                   @bind="searchText"
+                   @bind:event="oninput"
+                   placeholder="Search brand, generic, SKU or barcode..." />
+
+            <button class="button button-primary"
+                    type="button"
+                    @onclick="LoadMedicinesAsync">
+                Search
+            </button>
+
+            <button class="button button-secondary"
+                    type="button"
+                    @onclick="ClearSearchAsync">
+                Clear
+            </button>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="medicine-empty-state">
+                <strong>Loading medicines...</strong>
+            </div>
+        }
+        else if (medicines.Count == 0)
+        {
+            <div class="medicine-empty-state">
+                <span>✚</span>
+                <strong>No medicines found</strong>
+                <p>Add the first medicine using the form.</p>
+            </div>
+        }
+        else
+        {
+            <div class="responsive-table medicine-table-wrapper">
+                <table class="medicine-table">
+                    <thead>
+                        <tr>
+                            <th>Medicine</th>
+                            <th>SKU / Barcode</th>
+                            <th>Pricing</th>
+                            <th>Reorder</th>
+                            <th>Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @foreach (var medicine in medicines)
+                        {
+                            <tr @key="medicine.Id">
+                                <td>
+                                    <div class="medicine-name-cell">
+                                        <span class="medicine-table-icon">Rx</span>
+                                        <div>
+                                            <strong>@medicine.BrandName</strong>
+                                            <small>
+                                                @medicine.GenericName ·
+                                                @medicine.Strength ·
+                                                @medicine.DosageForm
+                                            </small>
+                                        </div>
+                                    </div>
+                                </td>
+
+                                <td>
+                                    <strong>@medicine.Sku</strong>
+                                    <small class="table-secondary-text">
+                                        @(string.IsNullOrWhiteSpace(medicine.Barcode)
+                                            ? "No barcode"
+                                            : medicine.Barcode)
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <strong>৳@medicine.SellingPrice.ToString("N2")</strong>
+                                    <small class="table-secondary-text">
+                                        Cost: ৳@medicine.PurchasePrice.ToString("N2")
+                                    </small>
+                                </td>
+
+                                <td>@medicine.ReorderLevel</td>
+
+                                <td>
+                                    <span class="medicine-status-pill @(medicine.IsActive ? "active" : "inactive")">
+                                        @(medicine.IsActive ? "Active" : "Inactive")
+                                    </span>
+
+                                    @if (medicine.RequiresPrescription)
+                                    {
+                                        <small class="prescription-label">Prescription</small>
+                                    }
+                                </td>
+
+                                <td>
+                                    <button type="button"
+                                            class="medicine-delete-button"
+                                            @onclick="() => DeleteMedicineAsync(medicine.Id)">
+                                        Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private Medicine formModel = NewMedicine();
+    private List<Medicine> medicines = [];
+    private string searchText = string.Empty;
+    private string? statusMessage;
+    private bool statusIsError;
+    private bool isLoading = true;
+    private bool isSaving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadMedicinesAsync();
+    }
+
+    private async Task LoadMedicinesAsync()
+    {
+        isLoading = true;
+
+        using var scope = ScopeFactory.CreateScope();
+        var database = scope.ServiceProvider
+            .GetRequiredService<ApplicationDbContext>();
+
+        IQueryable<Medicine> query = database.Medicines
+            .AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(searchText))
+        {
+            var searchPattern = $"%{searchText.Trim()}%";
+
+            query = query.Where(medicine =>
+                EF.Functions.ILike(medicine.BrandName, searchPattern) ||
+                EF.Functions.ILike(medicine.GenericName, searchPattern) ||
+                EF.Functions.ILike(medicine.Sku, searchPattern) ||
+                (medicine.Barcode != null &&
+                 EF.Functions.ILike(medicine.Barcode, searchPattern)));
+        }
+
+        medicines = await query
+            .OrderBy(medicine => medicine.BrandName)
+            .ThenBy(medicine => medicine.Strength)
+            .ToListAsync();
+
+        isLoading = false;
+    }
+
+    private async Task ClearSearchAsync()
+    {
+        searchText = string.Empty;
+        await LoadMedicinesAsync();
+    }
+
+    private async Task CreateMedicineAsync()
+    {
+        isSaving = true;
+        statusMessage = null;
+        statusIsError = false;
+
+        try
+        {
+            var sku = formModel.Sku.Trim();
+            var barcode = NormalizeOptional(formModel.Barcode);
+
+            using var scope = ScopeFactory.CreateScope();
+            var database = scope.ServiceProvider
+                .GetRequiredService<ApplicationDbContext>();
+
+            var skuExists = await database.Medicines
+                .AnyAsync(medicine =>
+                    EF.Functions.ILike(medicine.Sku, sku));
+
+            if (skuExists)
+            {
+                statusIsError = true;
+                statusMessage = $"The SKU '{sku}' is already in use.";
+                return;
+            }
+
+            if (barcode is not null)
+            {
+                var barcodeExists = await database.Medicines
+                    .AnyAsync(medicine =>
+                        medicine.Barcode != null &&
+                        EF.Functions.ILike(medicine.Barcode, barcode));
+
+                if (barcodeExists)
+                {
+                    statusIsError = true;
+                    statusMessage = $"The barcode '{barcode}' is already in use.";
+                    return;
+                }
+            }
+
+            var now = DateTime.UtcNow;
+
+            var medicine = new Medicine
+            {
+                BrandName = formModel.BrandName.Trim(),
+                GenericName = formModel.GenericName.Trim(),
+                Strength = formModel.Strength.Trim(),
+                DosageForm = formModel.DosageForm.Trim(),
+                Category = NormalizeOptional(formModel.Category),
+                Manufacturer = NormalizeOptional(formModel.Manufacturer),
+                Sku = sku,
+                Barcode = barcode,
+                PurchasePrice = formModel.PurchasePrice,
+                SellingPrice = formModel.SellingPrice,
+                MaximumRetailPrice = formModel.MaximumRetailPrice,
+                ReorderLevel = formModel.ReorderLevel,
+                RequiresPrescription = formModel.RequiresPrescription,
+                RackLocation = NormalizeOptional(formModel.RackLocation),
+                StorageInstructions =
+                    NormalizeOptional(formModel.StorageInstructions),
+                IsActive = true,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now,
+            };
+
+            database.Medicines.Add(medicine);
+            await database.SaveChangesAsync();
+
+            formModel = NewMedicine();
+            statusMessage = $"{medicine.BrandName} was added successfully.";
+
+            await LoadMedicinesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            statusIsError = true;
+            statusMessage =
+                "The medicine could not be saved. Check the SKU and barcode.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task DeleteMedicineAsync(Guid medicineId)
+    {
+        using var scope = ScopeFactory.CreateScope();
+        var database = scope.ServiceProvider
+            .GetRequiredService<ApplicationDbContext>();
+
+        var medicine = await database.Medicines
+            .SingleOrDefaultAsync(item => item.Id == medicineId);
+
+        if (medicine is null)
+        {
+            return;
+        }
+
+        database.Medicines.Remove(medicine);
+        await database.SaveChangesAsync();
+
+        statusIsError = false;
+        statusMessage = $"{medicine.BrandName} was deleted.";
+
+        await LoadMedicinesAsync();
+    }
+
+    private static Medicine NewMedicine()
+    {
+        return new Medicine
+        {
+            ReorderLevel = 10,
+            IsActive = true,
+        };
+    }
+
+    private static string? NormalizeOptional(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Trim();
+    }
+}
