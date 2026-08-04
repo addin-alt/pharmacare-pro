@@ -28,6 +28,10 @@ public class ApplicationDbContext(
 
     public DbSet<Customer> Customers => Set<Customer>();
 
+    public DbSet<Prescription> Prescriptions => Set<Prescription>();
+
+    public DbSet<PrescriptionItem> PrescriptionItems => Set<PrescriptionItem>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -379,6 +383,81 @@ public class ApplicationDbContext(
 
             entity.Property(customer => customer.CurrentBalance)
                 .HasPrecision(18, 2);
+        });
+
+        builder.Entity<Prescription>(entity =>
+        {
+            entity.ToTable("Prescriptions");
+
+            entity.HasKey(prescription => prescription.Id);
+
+            entity.HasIndex(
+                    prescription =>
+                        prescription.PrescriptionNumber)
+                .IsUnique();
+
+            entity.HasIndex(
+                prescription => prescription.CustomerId);
+
+            entity.HasIndex(
+                prescription => prescription.IssuedDate);
+
+            entity.HasIndex(
+                prescription => prescription.Status);
+
+            entity.HasIndex(
+                prescription => prescription.PrescriberName);
+
+            entity.Property(prescription => prescription.IssuedDate)
+                .HasColumnType("date");
+
+            entity.Property(prescription => prescription.ValidUntil)
+                .HasColumnType("date");
+
+            entity.Property(prescription => prescription.Status)
+                .HasConversion<string>()
+                .HasMaxLength(40);
+
+            entity.HasOne(prescription => prescription.Customer)
+                .WithMany()
+                .HasForeignKey(prescription => prescription.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<PrescriptionItem>(entity =>
+        {
+            entity.ToTable(
+                "PrescriptionItems",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_PrescriptionItems_QuantityPrescribed",
+                        "\"QuantityPrescribed\" > 0");
+
+                    table.HasCheckConstraint(
+                        "CK_PrescriptionItems_QuantityDispensed",
+                        "\"QuantityDispensed\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_PrescriptionItems_DispensedNotOverPrescribed",
+                        "\"QuantityDispensed\" <= " +
+                        "\"QuantityPrescribed\"");
+                });
+
+            entity.HasKey(item => item.Id);
+
+            entity.HasIndex(item => item.PrescriptionId);
+            entity.HasIndex(item => item.MedicineId);
+
+            entity.HasOne(item => item.Prescription)
+                .WithMany(prescription => prescription.Items)
+                .HasForeignKey(item => item.PrescriptionId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(item => item.Medicine)
+                .WithMany()
+                .HasForeignKey(item => item.MedicineId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
     }

@@ -1,66 +1,961 @@
 @page "/prescriptions"
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.EntityFrameworkCore
+@using PharmaCarePro.Domain.Entities
+@using PharmaCarePro.Web.Data
+@inject IServiceScopeFactory ScopeFactory
 
 <PageTitle>Prescriptions | PharmaCare Pro</PageTitle>
 
 <div class="page-heading module-heading">
     <div>
-        <span class="eyebrow">PHARMACARE PRO MODULE</span>
+        <span class="eyebrow">PRESCRIPTION MANAGEMENT</span>
         <h1>Prescriptions</h1>
-        <p>Register, verify and dispense prescriptions.</p>
+        <p>
+            Register prescriptions, prescribed medicines,
+            prescriber information and validity periods.
+        </p>
     </div>
 
-    <a class="button button-primary" href="">
+    <a class="button button-secondary" href="">
         Return to dashboard
     </a>
 </div>
 
-<section class="module-intro-card">
-    <div class="module-large-icon">⌑</div>
-
-    <div class="module-intro-content">
-        <span class="module-status">FOUNDATION READY</span>
-        <h2>Prescriptions module</h2>
-        <p>
-            The interface foundation is ready. Database entities, forms,
-            validation and operational workflows will be implemented in
-            the next development stages.
-        </p>
-
-        <div class="module-feature-grid">
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Patient and doctor information</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Prescription file uploads</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Pharmacist verification</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Dispensing and refill history</p>
-            </div>
-        </div>
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <div class="form-status prescription-status
+         @(statusIsError ? "status-error" : "status-success")">
+        @statusMessage
     </div>
+}
+
+<section class="prescription-summary-grid">
+    <article class="prescription-summary-card">
+        <span>Total prescriptions</span>
+        <strong>@prescriptions.Count</strong>
+        <small>All registered prescriptions</small>
+    </article>
+
+    <article class="prescription-summary-card">
+        <span>Active prescriptions</span>
+        <strong>@ActivePrescriptionCount</strong>
+        <small>Currently valid prescriptions</small>
+    </article>
+
+    <article class="prescription-summary-card">
+        <span>Dispensed</span>
+        <strong>@DispensedPrescriptionCount</strong>
+        <small>Completed prescription records</small>
+    </article>
+
+    <article class="prescription-summary-card">
+        <span>Expired</span>
+        <strong>@ExpiredPrescriptionCount</strong>
+        <small>Past their validity date</small>
+    </article>
 </section>
 
-<section class="dashboard-panel module-next-panel">
-    <div class="panel-heading">
-        <div>
-            <h2>Next implementation stage</h2>
-            <p>This module will be connected to Supabase PostgreSQL.</p>
+<div class="prescription-workspace">
+    <section class="dashboard-panel prescription-entry-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Register prescription</h2>
+                <p>Add patient, prescriber and medicine details.</p>
+            </div>
         </div>
-    </div>
 
-    <div class="module-next-steps">
-        <span>Database entities</span>
-        <span>Validation rules</span>
-        <span>Create and edit forms</span>
-        <span>Search and filtering</span>
-        <span>Role permissions</span>
-        <span>Automated tests</span>
-    </div>
-</section>
+        <div class="prescription-header-grid">
+            <div class="form-field">
+                <label>Customer</label>
+                <select value="@selectedCustomerId"
+                        @onchange="HandleCustomerSelection">
+                    <option value="@Guid.Empty">
+                        Select an active customer
+                    </option>
+
+                    @foreach (var customer in customers)
+                    {
+                        <option value="@customer.Id">
+                            @customer.CustomerCode ·
+                            @customer.Name
+                            @(string.IsNullOrWhiteSpace(customer.Phone)
+                                ? string.Empty
+                                : $" · {customer.Phone}")
+                        </option>
+                    }
+                </select>
+            </div>
+
+            <div class="form-field">
+                <label>Patient name</label>
+                <input @bind="patientName"
+                       placeholder="Selected customer name" />
+            </div>
+
+            <div class="form-field">
+                <label>Patient phone</label>
+                <input @bind="patientPhone"
+                       placeholder="Optional" />
+            </div>
+
+            <div class="form-field">
+                <label>Prescriber name</label>
+                <input @bind="prescriberName"
+                       placeholder="Dr. Full Name" />
+            </div>
+
+            <div class="form-field">
+                <label>Prescriber registration</label>
+                <input @bind="prescriberRegistrationNumber"
+                       placeholder="Registration number" />
+            </div>
+
+            <div class="form-field">
+                <label>Prescriber phone</label>
+                <input @bind="prescriberPhone"
+                       placeholder="Optional" />
+            </div>
+
+            <div class="form-field prescription-clinic-field">
+                <label>Hospital or clinic</label>
+                <input @bind="hospitalOrClinic"
+                       placeholder="Optional healthcare facility" />
+            </div>
+
+            <div class="form-field">
+                <label>Issued date</label>
+                <InputDate @bind-Value="issuedDate" />
+            </div>
+
+            <div class="form-field">
+                <label>Valid until</label>
+                <InputDate @bind-Value="validUntil" />
+            </div>
+        </div>
+
+        <EditForm Model="lineForm"
+                  OnValidSubmit="AddMedicineLineAsync"
+                  FormName="prescription-line">
+            <DataAnnotationsValidator />
+
+            <div class="prescription-line-form">
+                <div class="form-field prescription-medicine-field">
+                    <label>Medicine</label>
+                    <InputSelect @bind-Value="lineForm.MedicineId">
+                        <option value="@Guid.Empty">
+                            Select medicine
+                        </option>
+
+                        @foreach (var medicine in medicines)
+                        {
+                            <option value="@medicine.Id">
+                                @medicine.BrandName ·
+                                @medicine.Strength ·
+                                @medicine.DosageForm
+                            </option>
+                        }
+                    </InputSelect>
+
+                    <ValidationMessage
+                        For="() => lineForm.MedicineId" />
+                </div>
+
+                <div class="form-field">
+                    <label>Quantity prescribed</label>
+                    <InputNumber
+                        @bind-Value="lineForm.QuantityPrescribed"
+                        min="1" />
+
+                    <ValidationMessage
+                        For="() => lineForm.QuantityPrescribed" />
+                </div>
+
+                <div class="form-field">
+                    <label>Duration in days</label>
+                    <InputNumber
+                        @bind-Value="lineForm.DurationDays"
+                        min="1" />
+
+                    <ValidationMessage
+                        For="() => lineForm.DurationDays" />
+                </div>
+
+                <div class="form-field prescription-instructions-field">
+                    <label>Dosage instructions</label>
+                    <InputText
+                        @bind-Value="lineForm.DosageInstructions"
+                        placeholder="Example: One tablet twice daily after food" />
+
+                    <ValidationMessage
+                        For="() => lineForm.DosageInstructions" />
+                </div>
+
+                <div class="form-field prescription-line-notes-field">
+                    <label>Medicine notes</label>
+                    <InputText
+                        @bind-Value="lineForm.Notes"
+                        placeholder="Optional medicine instructions" />
+
+                    <ValidationMessage
+                        For="() => lineForm.Notes" />
+                </div>
+
+                <label class="prescription-substitution-field">
+                    <InputCheckbox
+                        @bind-Value="lineForm.SubstitutionAllowed" />
+
+                    <span>Generic substitution allowed</span>
+                </label>
+
+                <button class="button button-secondary
+                               prescription-add-line"
+                        type="submit"
+                        disabled="@isProcessing">
+                    Add prescribed medicine
+                </button>
+            </div>
+        </EditForm>
+
+        @if (medicineLines.Count == 0)
+        {
+            <div class="medicine-empty-state
+                        prescription-empty-lines">
+                <span>Rx</span>
+                <strong>No prescribed medicines added</strong>
+                <p>
+                    Add at least one medicine before saving
+                    the prescription.
+                </p>
+            </div>
+        }
+        else
+        {
+            <div class="prescription-line-list">
+                @foreach (var line in medicineLines)
+                {
+                    <article class="prescription-line-card"
+                             @key="line.LineId">
+                        <div class="prescription-line-heading">
+                            <div>
+                                <strong>@line.MedicineName</strong>
+                                <small>@line.DosageInstructions</small>
+                            </div>
+
+                            <span class="prescription-quantity-pill">
+                                Qty @line.QuantityPrescribed
+                            </span>
+                        </div>
+
+                        <div class="prescription-line-details">
+                            <span>
+                                Duration:
+                                <strong>
+                                    @(line.DurationDays.HasValue
+                                        ? $"{line.DurationDays} days"
+                                        : "Not specified")
+                                </strong>
+                            </span>
+
+                            <span>
+                                Substitution:
+                                <strong>
+                                    @(line.SubstitutionAllowed
+                                        ? "Allowed"
+                                        : "Not allowed")
+                                </strong>
+                            </span>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(line.Notes))
+                        {
+                            <p class="prescription-line-note">
+                                @line.Notes
+                            </p>
+                        }
+
+                        <button class="prescription-remove-line"
+                                type="button"
+                                @onclick="() => RemoveMedicineLine(
+                                    line.LineId)">
+                            Remove
+                        </button>
+                    </article>
+                }
+            </div>
+        }
+
+        <div class="form-field prescription-clinical-notes">
+            <label>Clinical notes</label>
+            <textarea @bind="clinicalNotes"
+                      rows="3"
+                      placeholder="Diagnosis, warnings or additional clinical information">
+            </textarea>
+        </div>
+
+        <button class="button button-primary
+                       prescription-save-button"
+                type="button"
+                disabled="@(medicineLines.Count == 0 ||
+                            isProcessing)"
+                @onclick="SavePrescriptionAsync">
+            @(isProcessing
+                ? "Saving prescription..."
+                : "Save prescription")
+        </button>
+    </section>
+
+    <section class="dashboard-panel prescription-history-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Prescription records</h2>
+                <p>Search recent customer prescriptions.</p>
+            </div>
+        </div>
+
+        <input class="prescription-search"
+               type="search"
+               @bind="searchText"
+               @bind:event="oninput"
+               placeholder="Search prescription, patient or prescriber..." />
+
+        @if (isLoading)
+        {
+            <div class="medicine-empty-state">
+                <strong>Loading prescriptions...</strong>
+            </div>
+        }
+        else if (!FilteredPrescriptions.Any())
+        {
+            <div class="medicine-empty-state
+                        prescription-empty-history">
+                <span>Rx</span>
+                <strong>No prescriptions found</strong>
+                <p>The first prescription will appear here.</p>
+            </div>
+        }
+        else
+        {
+            <div class="prescription-history-list">
+                @foreach (var prescription in FilteredPrescriptions)
+                {
+                    var displayStatus =
+                        GetDisplayStatus(prescription);
+
+                    <article class="prescription-history-card"
+                             @key="prescription.Id">
+                        <div class="prescription-history-heading">
+                            <div>
+                                <strong>
+                                    @prescription.PrescriptionNumber
+                                </strong>
+
+                                <small>
+                                    Issued
+                                    @(prescription.IssuedDate
+                                        .ToString("dd MMM yyyy"))
+                                </small>
+                            </div>
+
+                            <span class="prescription-status-pill
+                                @GetStatusClass(displayStatus)">
+                                @FormatStatus(displayStatus)
+                            </span>
+                        </div>
+
+                        <div class="prescription-patient">
+                            <span>Patient</span>
+                            <strong>@prescription.PatientName</strong>
+                            <small>
+                                @(prescription.PatientPhone ??
+                                    "No phone number")
+                            </small>
+                        </div>
+
+                        <div class="prescription-prescriber">
+                            <span>Prescriber</span>
+                            <strong>@prescription.PrescriberName</strong>
+
+                            @if (!string.IsNullOrWhiteSpace(
+                                prescription.HospitalOrClinic))
+                            {
+                                <small>
+                                    @prescription.HospitalOrClinic
+                                </small>
+                            }
+                        </div>
+
+                        <div class="prescription-history-values">
+                            <div>
+                                <span>Medicines</span>
+                                <strong>@prescription.Items.Count</strong>
+                            </div>
+
+                            <div>
+                                <span>Quantity</span>
+                                <strong>
+                                    @prescription.Items.Sum(
+                                        item =>
+                                            item.QuantityPrescribed)
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Dispensed</span>
+                                <strong>
+                                    @prescription.Items.Sum(
+                                        item =>
+                                            item.QuantityDispensed)
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Valid until</span>
+                                <strong>
+                                    @(prescription.ValidUntil.HasValue
+                                        ? prescription.ValidUntil.Value
+                                            .ToString("dd MMM yyyy")
+                                        : "Not limited")
+                                </strong>
+                            </div>
+                        </div>
+
+                        <div class="prescription-medicine-summary">
+                            @foreach (var item in prescription.Items)
+                            {
+                                <span>
+                                    @item.MedicineName ·
+                                    Qty @item.QuantityPrescribed
+                                </span>
+                            }
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(
+                            prescription.ClinicalNotes))
+                        {
+                            <p class="prescription-clinical-summary">
+                                @prescription.ClinicalNotes
+                            </p>
+                        }
+
+                        @if (displayStatus ==
+                            PrescriptionStatus.Active)
+                        {
+                            <button class="prescription-cancel-button"
+                                    type="button"
+                                    disabled="@isUpdating"
+                                    @onclick="() =>
+                                        CancelPrescriptionAsync(
+                                            prescription.Id)">
+                                Cancel prescription
+                            </button>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private List<Customer> customers = [];
+    private List<Medicine> medicines = [];
+    private List<Prescription> prescriptions = [];
+
+    private readonly List<PrescriptionMedicineLine>
+        medicineLines = [];
+
+    private PrescriptionLineForm lineForm =
+        new();
+
+    private Guid selectedCustomerId = Guid.Empty;
+
+    private string? patientName;
+    private string? patientPhone;
+    private string? prescriberName;
+    private string? prescriberRegistrationNumber;
+    private string? prescriberPhone;
+    private string? hospitalOrClinic;
+    private string? clinicalNotes;
+    private string? statusMessage;
+
+    private string searchText = string.Empty;
+
+    private DateTime issuedDate = DateTime.UtcNow.Date;
+
+    private DateTime? validUntil =
+        DateTime.UtcNow.Date.AddDays(30);
+
+    private bool statusIsError;
+    private bool isLoading = true;
+    private bool isProcessing;
+    private bool isUpdating;
+
+    private int ActivePrescriptionCount =>
+        prescriptions.Count(prescription =>
+            GetDisplayStatus(prescription) ==
+            PrescriptionStatus.Active);
+
+    private int DispensedPrescriptionCount =>
+        prescriptions.Count(prescription =>
+            GetDisplayStatus(prescription) ==
+            PrescriptionStatus.Dispensed);
+
+    private int ExpiredPrescriptionCount =>
+        prescriptions.Count(prescription =>
+            GetDisplayStatus(prescription) ==
+            PrescriptionStatus.Expired);
+
+    private IEnumerable<Prescription>
+        FilteredPrescriptions
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(searchText))
+            {
+                return prescriptions;
+            }
+
+            var search = searchText.Trim();
+
+            return prescriptions.Where(prescription =>
+                prescription.PrescriptionNumber.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ||
+                prescription.PatientName.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ||
+                prescription.PrescriberName.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ||
+                (prescription.PatientPhone?.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPageAsync();
+    }
+
+    private async Task LoadPageAsync()
+    {
+        isLoading = true;
+
+        using var scope = ScopeFactory.CreateScope();
+
+        var database = scope.ServiceProvider
+            .GetRequiredService<ApplicationDbContext>();
+
+        customers = await database.Customers
+            .AsNoTracking()
+            .Where(customer => customer.IsActive)
+            .OrderBy(customer => customer.Name)
+            .ToListAsync();
+
+        medicines = await database.Medicines
+            .AsNoTracking()
+            .Where(medicine => medicine.IsActive)
+            .OrderBy(medicine => medicine.BrandName)
+            .ThenBy(medicine => medicine.Strength)
+            .ToListAsync();
+
+        prescriptions = await database.Prescriptions
+            .AsNoTracking()
+            .Include(prescription => prescription.Customer)
+            .Include(prescription => prescription.Items)
+            .OrderByDescending(
+                prescription => prescription.CreatedAtUtc)
+            .Take(50)
+            .ToListAsync();
+
+        isLoading = false;
+    }
+
+    private void HandleCustomerSelection(
+        ChangeEventArgs eventArgs)
+    {
+        if (!Guid.TryParse(
+            eventArgs.Value?.ToString(),
+            out var customerId))
+        {
+            customerId = Guid.Empty;
+        }
+
+        selectedCustomerId = customerId;
+
+        var customer = customers.SingleOrDefault(
+            item => item.Id == selectedCustomerId);
+
+        if (customer is null)
+        {
+            patientName = null;
+            patientPhone = null;
+            return;
+        }
+
+        patientName = customer.Name;
+        patientPhone = customer.Phone;
+    }
+
+    private Task AddMedicineLineAsync()
+    {
+        statusMessage = null;
+        statusIsError = false;
+
+        var medicine = medicines.SingleOrDefault(
+            item => item.Id == lineForm.MedicineId);
+
+        if (medicine is null)
+        {
+            statusIsError = true;
+            statusMessage = "Select a valid medicine.";
+            return Task.CompletedTask;
+        }
+
+        var duplicateMedicine = medicineLines.Any(
+            line => line.MedicineId == medicine.Id);
+
+        if (duplicateMedicine)
+        {
+            statusIsError = true;
+            statusMessage =
+                "This medicine is already in the prescription.";
+            return Task.CompletedTask;
+        }
+
+        medicineLines.Add(
+            new PrescriptionMedicineLine(
+                Guid.NewGuid(),
+                medicine.Id,
+                $"{medicine.BrandName} " +
+                $"{medicine.Strength} " +
+                $"{medicine.DosageForm}",
+                lineForm.QuantityPrescribed,
+                lineForm.DosageInstructions.Trim(),
+                lineForm.DurationDays,
+                lineForm.SubstitutionAllowed,
+                Normalize(lineForm.Notes)));
+
+        lineForm = new PrescriptionLineForm();
+
+        return Task.CompletedTask;
+    }
+
+    private void RemoveMedicineLine(Guid lineId)
+    {
+        medicineLines.RemoveAll(
+            line => line.LineId == lineId);
+    }
+
+    private async Task SavePrescriptionAsync()
+    {
+        if (selectedCustomerId == Guid.Empty)
+        {
+            statusIsError = true;
+            statusMessage = "Select a customer.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(patientName))
+        {
+            statusIsError = true;
+            statusMessage = "Patient name is required.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(prescriberName))
+        {
+            statusIsError = true;
+            statusMessage = "Prescriber name is required.";
+            return;
+        }
+
+        if (validUntil.HasValue &&
+            validUntil.Value.Date < issuedDate.Date)
+        {
+            statusIsError = true;
+            statusMessage =
+                "Valid-until date cannot be before the issued date.";
+            return;
+        }
+
+        if (medicineLines.Count == 0)
+        {
+            statusIsError = true;
+            statusMessage =
+                "Add at least one prescribed medicine.";
+            return;
+        }
+
+        isProcessing = true;
+        statusIsError = false;
+        statusMessage = null;
+
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+
+            var database = scope.ServiceProvider
+                .GetRequiredService<ApplicationDbContext>();
+
+            var customer = await database.Customers
+                .SingleOrDefaultAsync(item =>
+                    item.Id == selectedCustomerId &&
+                    item.IsActive);
+
+            if (customer is null)
+            {
+                throw new InvalidOperationException(
+                    "The selected customer is no longer active.");
+            }
+
+            var now = DateTime.UtcNow;
+
+            var prescriptionNumber =
+                $"RX-{now:yyyyMMddHHmmss}-" +
+                $"{Random.Shared.Next(100, 999)}";
+
+            var prescription = new Prescription
+            {
+                PrescriptionNumber = prescriptionNumber,
+                CustomerId = customer.Id,
+                PatientName = patientName.Trim(),
+                PatientPhone = Normalize(patientPhone),
+                PrescriberName = prescriberName.Trim(),
+                PrescriberRegistrationNumber =
+                    Normalize(
+                        prescriberRegistrationNumber),
+                PrescriberPhone =
+                    Normalize(prescriberPhone),
+                HospitalOrClinic =
+                    Normalize(hospitalOrClinic),
+                IssuedDate = issuedDate.Date,
+                ValidUntil = validUntil?.Date,
+                Status = PrescriptionStatus.Active,
+                ClinicalNotes = Normalize(clinicalNotes),
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            };
+
+            foreach (var line in medicineLines)
+            {
+                prescription.Items.Add(
+                    new PrescriptionItem
+                    {
+                        MedicineId = line.MedicineId,
+                        MedicineName = line.MedicineName,
+                        QuantityPrescribed =
+                            line.QuantityPrescribed,
+                        QuantityDispensed = 0,
+                        DosageInstructions =
+                            line.DosageInstructions,
+                        DurationDays = line.DurationDays,
+                        SubstitutionAllowed =
+                            line.SubstitutionAllowed,
+                        Notes = line.Notes
+                    });
+            }
+
+            database.Prescriptions.Add(prescription);
+
+            await database.SaveChangesAsync();
+
+            statusMessage =
+                $"Prescription {prescriptionNumber} " +
+                "was registered successfully.";
+
+            ResetForm();
+
+            await LoadPageAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            statusIsError = true;
+            statusMessage = exception.Message;
+        }
+        catch (DbUpdateException)
+        {
+            statusIsError = true;
+            statusMessage =
+                "The prescription could not be saved. " +
+                "Please check the details and try again.";
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+
+    private async Task CancelPrescriptionAsync(
+        Guid prescriptionId)
+    {
+        isUpdating = true;
+        statusMessage = null;
+        statusIsError = false;
+
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+
+            var database = scope.ServiceProvider
+                .GetRequiredService<ApplicationDbContext>();
+
+            var prescription =
+                await database.Prescriptions
+                    .SingleOrDefaultAsync(item =>
+                        item.Id == prescriptionId);
+
+            if (prescription is null)
+            {
+                statusIsError = true;
+                statusMessage =
+                    "Prescription was not found.";
+                return;
+            }
+
+            if (prescription.Status ==
+                PrescriptionStatus.Dispensed)
+            {
+                statusIsError = true;
+                statusMessage =
+                    "A dispensed prescription cannot be cancelled.";
+                return;
+            }
+
+            prescription.Status =
+                PrescriptionStatus.Cancelled;
+
+            prescription.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+            await database.SaveChangesAsync();
+
+            statusMessage =
+                $"Prescription " +
+                $"{prescription.PrescriptionNumber} " +
+                "was cancelled.";
+
+            await LoadPageAsync();
+        }
+        finally
+        {
+            isUpdating = false;
+        }
+    }
+
+    private void ResetForm()
+    {
+        selectedCustomerId = Guid.Empty;
+        patientName = null;
+        patientPhone = null;
+        prescriberName = null;
+        prescriberRegistrationNumber = null;
+        prescriberPhone = null;
+        hospitalOrClinic = null;
+        clinicalNotes = null;
+        issuedDate = DateTime.UtcNow.Date;
+        validUntil = DateTime.UtcNow.Date.AddDays(30);
+        medicineLines.Clear();
+        lineForm = new PrescriptionLineForm();
+    }
+
+    private static PrescriptionStatus GetDisplayStatus(
+        Prescription prescription)
+    {
+        if (prescription.Status ==
+                PrescriptionStatus.Active &&
+            prescription.ValidUntil.HasValue &&
+            prescription.ValidUntil.Value.Date <
+                DateTime.UtcNow.Date)
+        {
+            return PrescriptionStatus.Expired;
+        }
+
+        return prescription.Status;
+    }
+
+    private static string FormatStatus(
+        PrescriptionStatus status)
+    {
+        return status switch
+        {
+            PrescriptionStatus.PartiallyDispensed =>
+                "Partially dispensed",
+            _ => status.ToString()
+        };
+    }
+
+    private static string GetStatusClass(
+        PrescriptionStatus status)
+    {
+        return status switch
+        {
+            PrescriptionStatus.Active =>
+                "prescription-status-active",
+
+            PrescriptionStatus.Dispensed =>
+                "prescription-status-dispensed",
+
+            PrescriptionStatus.PartiallyDispensed =>
+                "prescription-status-partial",
+
+            PrescriptionStatus.Expired =>
+                "prescription-status-expired",
+
+            PrescriptionStatus.Cancelled =>
+                "prescription-status-cancelled",
+
+            _ => "prescription-status-cancelled"
+        };
+    }
+
+    private static string? Normalize(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Trim();
+    }
+
+    private sealed class PrescriptionLineForm
+    {
+        public Guid MedicineId { get; set; }
+
+        [Range(
+            1,
+            1_000_000,
+            ErrorMessage =
+                "Quantity must be at least one.")]
+        public int QuantityPrescribed { get; set; } = 1;
+
+        [Required(
+            ErrorMessage =
+                "Dosage instructions are required.")]
+        [StringLength(300)]
+        public string DosageInstructions { get; set; } =
+            string.Empty;
+
+        [Range(
+            1,
+            3650,
+            ErrorMessage =
+                "Duration must be at least one day.")]
+        public int? DurationDays { get; set; }
+
+        public bool SubstitutionAllowed { get; set; }
+
+        [StringLength(500)]
+        public string? Notes { get; set; }
+    }
+
+    private sealed record PrescriptionMedicineLine(
+        Guid LineId,
+        Guid MedicineId,
+        string MedicineName,
+        int QuantityPrescribed,
+        string DosageInstructions,
+        int? DurationDays,
+        bool SubstitutionAllowed,
+        string? Notes);
+}

@@ -2881,3 +2881,383 @@ td {
         grid-template-columns: 1fr;
     }
 }
+
+/* Functional Prescriptions v1 */
+
+.prescription-status {
+    margin-bottom: 20px;
+}
+
+.prescription-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.prescription-summary-card {
+    padding: 18px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+
+.prescription-summary-card span,
+.prescription-summary-card small {
+    display: block;
+    color: var(--text-soft);
+}
+
+.prescription-summary-card span {
+    font-size: 0.72rem;
+    font-weight: 750;
+}
+
+.prescription-summary-card strong {
+    display: block;
+    margin: 7px 0 3px;
+    font-size: 1.42rem;
+}
+
+.prescription-summary-card small {
+    font-size: 0.64rem;
+}
+
+.prescription-workspace {
+    display: grid;
+    grid-template-columns:
+        minmax(0, 1.25fr)
+        minmax(360px, 0.75fr);
+    gap: 20px;
+    align-items: start;
+}
+
+.prescription-history-panel {
+    position: sticky;
+    top: 95px;
+}
+
+.prescription-header-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.prescription-clinic-field {
+    grid-column: 1 / -1;
+}
+
+.prescription-line-form {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 18px;
+    padding: 15px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface-soft);
+}
+
+.prescription-medicine-field {
+    grid-column: span 2;
+}
+
+.prescription-instructions-field,
+.prescription-line-notes-field {
+    grid-column: span 2;
+}
+
+.prescription-substitution-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    align-self: end;
+    min-height: 42px;
+    font-size: 0.67rem;
+    font-weight: 750;
+}
+
+.prescription-add-line {
+    align-self: end;
+    min-height: 42px;
+}
+
+.prescription-empty-lines,
+.prescription-empty-history {
+    min-height: 190px;
+    margin-top: 17px;
+}
+
+.prescription-line-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 17px;
+}
+
+.prescription-line-card {
+    position: relative;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: white;
+}
+
+.prescription-line-heading,
+.prescription-history-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.prescription-line-heading strong,
+.prescription-line-heading small,
+.prescription-history-heading strong,
+.prescription-history-heading small {
+    display: block;
+}
+
+.prescription-line-heading small,
+.prescription-history-heading small {
+    margin-top: 4px;
+    color: var(--text-soft);
+    font-size: 0.62rem;
+}
+
+.prescription-quantity-pill {
+    padding: 5px 9px;
+    border-radius: 999px;
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    font-size: 0.6rem;
+    font-weight: 850;
+    white-space: nowrap;
+}
+
+.prescription-line-details {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+    padding: 10px;
+    border-radius: 9px;
+    background: var(--surface-soft);
+}
+
+.prescription-line-details span {
+    color: var(--text-soft);
+    font-size: 0.62rem;
+}
+
+.prescription-line-details strong {
+    color: var(--text);
+}
+
+.prescription-line-note {
+    margin: 10px 0 0;
+    color: var(--text-soft);
+    font-size: 0.63rem;
+}
+
+.prescription-remove-line,
+.prescription-cancel-button {
+    margin-top: 10px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #c93434;
+    font-size: 0.63rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.prescription-clinical-notes {
+    margin-top: 18px;
+}
+
+.prescription-save-button {
+    width: 100%;
+    margin-top: 15px;
+}
+
+.prescription-search {
+    width: 100%;
+    min-height: 45px;
+    margin-bottom: 17px;
+    padding: 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    background: white;
+    outline: none;
+}
+
+.prescription-history-list {
+    display: grid;
+    max-height: 850px;
+    overflow-y: auto;
+    gap: 11px;
+}
+
+.prescription-history-card {
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    background: white;
+}
+
+.prescription-status-pill {
+    padding: 5px 8px;
+    border-radius: 999px;
+    font-size: 0.57rem;
+    font-weight: 850;
+    white-space: nowrap;
+}
+
+.prescription-status-active {
+    background: #e5f8f1;
+    color: #08765f;
+}
+
+.prescription-status-dispensed {
+    background: #e9f2ff;
+    color: #245fb3;
+}
+
+.prescription-status-partial {
+    background: #fff4dc;
+    color: #9a6000;
+}
+
+.prescription-status-expired,
+.prescription-status-cancelled {
+    background: #f2f4f7;
+    color: #667085;
+}
+
+.prescription-patient,
+.prescription-prescriber {
+    margin-top: 13px;
+}
+
+.prescription-patient span,
+.prescription-patient strong,
+.prescription-patient small,
+.prescription-prescriber span,
+.prescription-prescriber strong,
+.prescription-prescriber small {
+    display: block;
+}
+
+.prescription-patient span,
+.prescription-prescriber span {
+    color: var(--text-soft);
+    font-size: 0.58rem;
+}
+
+.prescription-patient strong,
+.prescription-prescriber strong {
+    margin-top: 3px;
+    font-size: 0.72rem;
+}
+
+.prescription-patient small,
+.prescription-prescriber small {
+    margin-top: 3px;
+    color: var(--text-soft);
+    font-size: 0.6rem;
+}
+
+.prescription-history-values {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+    margin-top: 12px;
+    padding: 11px;
+    border-radius: 10px;
+    background: var(--surface-soft);
+}
+
+.prescription-history-values span,
+.prescription-history-values strong {
+    display: block;
+}
+
+.prescription-history-values span {
+    color: var(--text-soft);
+    font-size: 0.57rem;
+}
+
+.prescription-history-values strong {
+    margin-top: 3px;
+    font-size: 0.68rem;
+}
+
+.prescription-medicine-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 11px;
+}
+
+.prescription-medicine-summary span {
+    padding: 5px 8px;
+    border-radius: 8px;
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    font-size: 0.58rem;
+    font-weight: 750;
+}
+
+.prescription-clinical-summary {
+    margin: 11px 0 0;
+    padding: 10px;
+    border-radius: 9px;
+    background: #fff8ee;
+    color: #805522;
+    font-size: 0.62rem;
+    line-height: 1.5;
+}
+
+@media (max-width: 1180px) {
+    .prescription-workspace {
+        grid-template-columns: 1fr;
+    }
+
+    .prescription-history-panel {
+        position: static;
+    }
+}
+
+@media (max-width: 800px) {
+    .prescription-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .prescription-line-form {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .prescription-medicine-field,
+    .prescription-instructions-field,
+    .prescription-line-notes-field {
+        grid-column: span 2;
+    }
+}
+
+@media (max-width: 580px) {
+    .prescription-summary-grid,
+    .prescription-header-grid,
+    .prescription-line-form,
+    .prescription-line-details,
+    .prescription-history-values {
+        grid-template-columns: 1fr;
+    }
+
+    .prescription-clinic-field,
+    .prescription-medicine-field,
+    .prescription-instructions-field,
+    .prescription-line-notes-field {
+        grid-column: auto;
+    }
+}
