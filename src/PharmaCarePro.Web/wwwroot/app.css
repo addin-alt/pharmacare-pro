@@ -2830,3 +2830,54 @@ td {
         grid-column: auto;
     }
 }
+
+/* POS registered customer integration v1 */
+
+.pos-customer-selector,
+.pos-customer-card {
+    grid-column: 1 / -1;
+}
+
+.pos-customer-card {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid rgba(15, 159, 132, 0.2);
+    border-radius: 11px;
+    background: var(--primary-soft);
+}
+
+.pos-customer-card span,
+.pos-customer-card strong {
+    display: block;
+}
+
+.pos-customer-card span {
+    color: var(--text-soft);
+    font-size: 0.59rem;
+}
+
+.pos-customer-card strong {
+    margin-top: 3px;
+    font-size: 0.7rem;
+}
+
+.pos-customer-allergy {
+    grid-column: 1 / -1;
+    padding-top: 9px;
+    border-top: 1px solid rgba(180, 35, 24, 0.16);
+    color: #b42318;
+}
+
+@media (max-width: 560px) {
+    .pos-customer-selector,
+    .pos-customer-card,
+    .pos-customer-allergy {
+        grid-column: auto;
+    }
+
+    .pos-customer-card {
+        grid-template-columns: 1fr;
+    }
+}

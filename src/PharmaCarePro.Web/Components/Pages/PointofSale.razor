@@ -200,6 +200,27 @@
         }
 
         <div class="pos-form-grid">
+            <div class="form-field pos-customer-selector">
+                <label>Registered customer</label>
+                <select value="@selectedCustomerId"
+                        @onchange="HandleCustomerSelection">
+                    <option value="@Guid.Empty">
+                        Walk-in customer
+                    </option>
+
+                    @foreach (var customer in customers)
+                    {
+                        <option value="@customer.Id">
+                            @customer.CustomerCode ·
+                            @customer.Name
+                            @(string.IsNullOrWhiteSpace(customer.Phone)
+                                ? string.Empty
+                                : $" · {customer.Phone}")
+                        </option>
+                    }
+                </select>
+            </div>
+
             <div class="form-field">
                 <label>Customer name</label>
                 <input @bind="customerName"
@@ -211,6 +232,32 @@
                 <input @bind="customerPhone"
                        placeholder="Optional" />
             </div>
+
+            @if (SelectedCustomer is Customer selectedCustomer)
+            {
+                <div class="pos-customer-card">
+                    <div>
+                        <span>Customer balance</span>
+                        <strong>
+                            ৳@selectedCustomer.CurrentBalance.ToString("N2")
+                        </strong>
+                    </div>
+
+                    <div>
+                        <span>Loyalty points</span>
+                        <strong>@selectedCustomer.LoyaltyPoints</strong>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(
+                        selectedCustomer.Allergies))
+                    {
+                        <div class="pos-customer-allergy">
+                            <span>Allergy warning</span>
+                            <strong>@selectedCustomer.Allergies</strong>
+                        </div>
+                    }
+                </div>
+            }
 
             <div class="form-field">
                 <label>Discount</label>
@@ -299,9 +346,11 @@
 
 @code {
     private List<MedicineOption> catalog = [];
+    private List<Customer> customers = [];
     private readonly List<CartLine> cart = [];
 
     private string searchText = string.Empty;
+    private Guid selectedCustomerId = Guid.Empty;
     private string? customerName;
     private string? customerPhone;
     private string? statusMessage;
@@ -315,6 +364,10 @@
     private bool statusIsError;
     private bool isLoading = true;
     private bool isProcessing;
+
+    private Customer? SelectedCustomer =>
+        customers.SingleOrDefault(
+            customer => customer.Id == selectedCustomerId);
 
     private IEnumerable<MedicineOption> FilteredCatalog
     {
@@ -420,7 +473,38 @@
             .Where(medicine => medicine.AvailableQuantity > 0)
             .ToList();
 
+        customers = await database.Customers
+            .AsNoTracking()
+            .Where(customer => customer.IsActive)
+            .OrderBy(customer => customer.Name)
+            .ToListAsync();
+
         isLoading = false;
+    }
+
+    private void HandleCustomerSelection(
+        ChangeEventArgs eventArgs)
+    {
+        if (!Guid.TryParse(
+            eventArgs.Value?.ToString(),
+            out var customerId))
+        {
+            customerId = Guid.Empty;
+        }
+
+        selectedCustomerId = customerId;
+
+        var customer = SelectedCustomer;
+
+        if (customer is null)
+        {
+            customerName = null;
+            customerPhone = null;
+            return;
+        }
+
+        customerName = customer.Name;
+        customerPhone = customer.Phone;
     }
 
     private async Task AddMedicineAsync(Guid medicineId)
@@ -544,6 +628,9 @@
     private void ClearCart()
     {
         cart.Clear();
+        selectedCustomerId = Guid.Empty;
+        customerName = null;
+        customerPhone = null;
         discountAmount = 0;
         taxAmount = 0;
         amountReceived = 0;
@@ -590,6 +677,22 @@
 
             var now = DateTime.UtcNow;
 
+            Customer? selectedCustomer = null;
+
+            if (selectedCustomerId != Guid.Empty)
+            {
+                selectedCustomer = await database.Customers
+                    .SingleOrDefaultAsync(customer =>
+                        customer.Id == selectedCustomerId &&
+                        customer.IsActive);
+
+                if (selectedCustomer is null)
+                {
+                    throw new InvalidOperationException(
+                        "The selected customer is no longer active.");
+                }
+            }
+
             var invoiceNumber =
                 $"PCP-{now:yyyyMMddHHmmss}-" +
                 $"{Random.Shared.Next(100, 999)}";
@@ -597,8 +700,13 @@
             var sale = new Sale
             {
                 InvoiceNumber = invoiceNumber,
-                CustomerName = Normalize(customerName),
-                CustomerPhone = Normalize(customerPhone),
+                CustomerId = selectedCustomer?.Id,
+                CustomerName =
+                    selectedCustomer?.Name ??
+                    Normalize(customerName),
+                CustomerPhone =
+                    selectedCustomer?.Phone ??
+                    Normalize(customerPhone),
                 SoldAtUtc = now,
                 DiscountAmount = Math.Round(discountAmount, 2),
                 TaxAmount = Math.Round(taxAmount, 2),
@@ -717,6 +825,17 @@
                 sale.PaymentMethod = PaymentMethod.Due;
             }
 
+            if (selectedCustomer is not null)
+            {
+                selectedCustomer.CurrentBalance =
+                    Math.Round(
+                        selectedCustomer.CurrentBalance +
+                        sale.DueAmount,
+                        2);
+
+                selectedCustomer.UpdatedAtUtc = now;
+            }
+
             database.Sales.Add(sale);
 
             await database.SaveChangesAsync();
@@ -725,6 +844,7 @@
             var change = ChangeAmount;
 
             cart.Clear();
+            selectedCustomerId = Guid.Empty;
             customerName = null;
             customerPhone = null;
             discountAmount = 0;
