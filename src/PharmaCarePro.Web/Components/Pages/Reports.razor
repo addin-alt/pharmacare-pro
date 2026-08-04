@@ -1,66 +1,647 @@
 @page "/reports"
+@using Microsoft.EntityFrameworkCore
+@using PharmaCarePro.Domain.Entities
+@using PharmaCarePro.Web.Data
+@inject IServiceScopeFactory ScopeFactory
 
 <PageTitle>Reports | PharmaCare Pro</PageTitle>
 
 <div class="page-heading module-heading">
     <div>
-        <span class="eyebrow">PHARMACARE PRO MODULE</span>
+        <span class="eyebrow">BUSINESS INTELLIGENCE</span>
         <h1>Reports</h1>
-        <p>Review pharmacy performance and financial reports.</p>
+        <p>
+            Review sales, purchases, profit estimates, inventory value
+            and account balances using live pharmacy data.
+        </p>
     </div>
 
-    <a class="button button-primary" href="">
+    <a class="button button-secondary" href="">
         Return to dashboard
     </a>
 </div>
 
-<section class="module-intro-card">
-    <div class="module-large-icon">↗</div>
-
-    <div class="module-intro-content">
-        <span class="module-status">FOUNDATION READY</span>
-        <h2>Reports module</h2>
-        <p>
-            The interface foundation is ready. Database entities, forms,
-            validation and operational workflows will be implemented in
-            the next development stages.
-        </p>
-
-        <div class="module-feature-grid">
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Sales, purchases and profit</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Stock valuation and movement</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Low-stock and expiry analysis</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Customer, supplier and audit ledgers</p>
-            </div>
-        </div>
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <div class="form-status report-status
+         @(statusIsError ? "status-error" : "status-success")">
+        @statusMessage
     </div>
-</section>
+}
 
-<section class="dashboard-panel module-next-panel">
+<section class="dashboard-panel report-filter-panel">
     <div class="panel-heading">
         <div>
-            <h2>Next implementation stage</h2>
-            <p>This module will be connected to Supabase PostgreSQL.</p>
+            <h2>Reporting period</h2>
+            <p>Select an inclusive date range and refresh the report.</p>
         </div>
     </div>
 
-    <div class="module-next-steps">
-        <span>Database entities</span>
-        <span>Validation rules</span>
-        <span>Create and edit forms</span>
-        <span>Search and filtering</span>
-        <span>Role permissions</span>
-        <span>Automated tests</span>
+    <div class="report-filter-grid">
+        <div class="form-field">
+            <label>From date</label>
+            <input type="date" @bind="fromDate" />
+        </div>
+
+        <div class="form-field">
+            <label>To date</label>
+            <input type="date" @bind="toDate" />
+        </div>
+
+        <button class="button button-primary report-run-button"
+                type="button"
+                disabled="@isLoading"
+                @onclick="LoadReportAsync">
+            @(isLoading ? "Loading report..." : "Run report")
+        </button>
     </div>
 </section>
+
+<section class="report-summary-grid">
+    <article class="report-summary-card">
+        <span>Sales revenue</span>
+        <strong>৳@salesRevenue.ToString("N2")</strong>
+        <small>@invoiceCount sales invoices</small>
+    </article>
+
+    <article class="report-summary-card">
+        <span>Payments received</span>
+        <strong>৳@salesPaid.ToString("N2")</strong>
+        <small>৳@salesDue.ToString("N2") sales due</small>
+    </article>
+
+    <article class="report-summary-card">
+        <span>Purchase value</span>
+        <strong>৳@purchaseValue.ToString("N2")</strong>
+        <small>@purchaseCount purchase receipts</small>
+    </article>
+
+    <article class="report-summary-card">
+        <span>Estimated gross profit</span>
+        <strong>৳@estimatedGrossProfit.ToString("N2")</strong>
+        <small>@grossMargin.ToString("N1")% item margin</small>
+    </article>
+</section>
+
+<div class="report-overview-grid">
+    <section class="dashboard-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Financial overview</h2>
+                <p>Selected-period transaction totals.</p>
+            </div>
+        </div>
+
+        <div class="report-financial-list">
+            <div>
+                <span>Item sales before invoice adjustments</span>
+                <strong>৳@itemSalesValue.ToString("N2")</strong>
+            </div>
+
+            <div>
+                <span>Estimated cost of goods sold</span>
+                <strong>৳@estimatedCostOfGoods.ToString("N2")</strong>
+            </div>
+
+            <div>
+                <span>Sales discounts</span>
+                <strong>৳@salesDiscounts.ToString("N2")</strong>
+            </div>
+
+            <div>
+                <span>Sales tax</span>
+                <strong>৳@salesTax.ToString("N2")</strong>
+            </div>
+
+            <div>
+                <span>Purchase payments</span>
+                <strong>৳@purchasePaid.ToString("N2")</strong>
+            </div>
+
+            <div>
+                <span>Purchase dues</span>
+                <strong>৳@purchaseDue.ToString("N2")</strong>
+            </div>
+        </div>
+
+        <p class="report-method-note">
+            Estimated gross profit uses each sold batch's recorded purchase
+            price and excludes allocation of invoice-level discounts and tax.
+        </p>
+    </section>
+
+    <section class="dashboard-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Current business position</h2>
+                <p>Live balances and stock valuation.</p>
+            </div>
+        </div>
+
+        <div class="report-position-grid">
+            <article>
+                <span>Inventory cost value</span>
+                <strong>৳@inventoryCostValue.ToString("N2")</strong>
+                <small>@availableStockUnits sellable units</small>
+            </article>
+
+            <article>
+                <span>Inventory retail value</span>
+                <strong>৳@inventoryRetailValue.ToString("N2")</strong>
+                <small>Based on batch selling prices</small>
+            </article>
+
+            <article>
+                <span>Customer receivable</span>
+                <strong>৳@customerReceivable.ToString("N2")</strong>
+                <small>Outstanding customer balances</small>
+            </article>
+
+            <article>
+                <span>Supplier payable</span>
+                <strong>৳@supplierPayable.ToString("N2")</strong>
+                <small>Outstanding supplier balances</small>
+            </article>
+        </div>
+    </section>
+</div>
+
+<div class="report-content-grid">
+    <section class="dashboard-panel report-daily-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Daily sales performance</h2>
+                <p>Revenue, payments and dues by day.</p>
+            </div>
+        </div>
+
+        <div class="responsive-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Invoices</th>
+                        <th>Units</th>
+                        <th>Sales</th>
+                        <th>Received</th>
+                        <th>Due</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @if (isLoading)
+                    {
+                        <tr class="empty-table-row">
+                            <td colspan="6">
+                                <span>Loading daily report...</span>
+                            </td>
+                        </tr>
+                    }
+                    else if (dailySales.Count == 0)
+                    {
+                        <tr class="empty-table-row">
+                            <td colspan="6">
+                                <span>
+                                    No sales were recorded during this period.
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var day in dailySales)
+                        {
+                            <tr @key="day.Date">
+                                <td>
+                                    <strong>
+                                        @day.Date.ToString("dd MMM yyyy")
+                                    </strong>
+                                </td>
+
+                                <td>@day.InvoiceCount</td>
+                                <td>@day.UnitsSold</td>
+                                <td>৳@day.Sales.ToString("N2")</td>
+                                <td>৳@day.Paid.ToString("N2")</td>
+                                <td>৳@day.Due.ToString("N2")</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="dashboard-panel report-top-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Top-selling medicines</h2>
+                <p>Ranked by quantity sold in the period.</p>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="medicine-empty-state">
+                <strong>Loading medicine performance...</strong>
+            </div>
+        }
+        else if (topMedicines.Count == 0)
+        {
+            <div class="medicine-empty-state report-empty-state">
+                <span>Rx</span>
+                <strong>No medicine sales found</strong>
+                <p>Completed sales will appear here.</p>
+            </div>
+        }
+        else
+        {
+            <div class="report-top-list">
+                @for (var index = 0;
+                      index < topMedicines.Count;
+                      index++)
+                {
+                    var medicine = topMedicines[index];
+
+                    <article class="report-top-item"
+                             @key="medicine.Name">
+                        <span class="report-rank">@(index + 1)</span>
+
+                        <div>
+                            <strong>@medicine.Name</strong>
+                            <small>
+                                @medicine.QuantitySold units sold
+                            </small>
+                        </div>
+
+                        <strong>
+                            ৳@medicine.SalesValue.ToString("N2")
+                        </strong>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</div>
+
+<section class="dashboard-panel report-transaction-panel">
+    <div class="panel-heading">
+        <div>
+            <h2>Recent transactions in period</h2>
+            <p>Latest sales invoices matching the selected dates.</p>
+        </div>
+    </div>
+
+    <div class="responsive-table">
+        <table>
+            <thead>
+                <tr>
+                    <th>Invoice</th>
+                    <th>Date</th>
+                    <th>Customer</th>
+                    <th>Payment</th>
+                    <th>Total</th>
+                    <th>Paid</th>
+                    <th>Due</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                @if (recentSales.Count == 0)
+                {
+                    <tr class="empty-table-row">
+                        <td colspan="8">
+                            <span>No matching sales transactions.</span>
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var sale in recentSales)
+                    {
+                        <tr @key="sale.Id">
+                            <td>
+                                <strong>@sale.InvoiceNumber</strong>
+                            </td>
+
+                            <td>
+                                @(sale.SoldAtUtc
+                                    .ToLocalTime()
+                                    .ToString("dd MMM yyyy, hh:mm tt"))
+                            </td>
+
+                            <td>
+                                @(string.IsNullOrWhiteSpace(
+                                    sale.CustomerName)
+                                    ? "Walk-in customer"
+                                    : sale.CustomerName)
+                            </td>
+
+                            <td>
+                                @FormatPaymentMethod(
+                                    sale.PaymentMethod)
+                            </td>
+
+                            <td>৳@sale.GrandTotal.ToString("N2")</td>
+                            <td>৳@sale.PaidAmount.ToString("N2")</td>
+                            <td>৳@sale.DueAmount.ToString("N2")</td>
+
+                            <td>
+                                <span class="metric-trend
+                                    @GetSaleStatusClass(sale.Status)">
+                                    @FormatSaleStatus(sale.Status)
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    private DateTime fromDate =
+        DateTime.Today.AddDays(-29);
+
+    private DateTime toDate =
+        DateTime.Today;
+
+    private readonly List<DailySalesRow> dailySales = [];
+    private readonly List<TopMedicineRow> topMedicines = [];
+    private readonly List<Sale> recentSales = [];
+
+    private string? statusMessage;
+
+    private decimal salesRevenue;
+    private decimal salesPaid;
+    private decimal salesDue;
+    private decimal salesDiscounts;
+    private decimal salesTax;
+
+    private decimal itemSalesValue;
+    private decimal estimatedCostOfGoods;
+    private decimal estimatedGrossProfit;
+    private decimal grossMargin;
+
+    private decimal purchaseValue;
+    private decimal purchasePaid;
+    private decimal purchaseDue;
+
+    private decimal inventoryCostValue;
+    private decimal inventoryRetailValue;
+    private decimal customerReceivable;
+    private decimal supplierPayable;
+
+    private int invoiceCount;
+    private int purchaseCount;
+    private int availableStockUnits;
+
+    private bool statusIsError;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadReportAsync();
+    }
+
+    private async Task LoadReportAsync()
+    {
+        if (fromDate.Date > toDate.Date)
+        {
+            statusIsError = true;
+            statusMessage =
+                "From date cannot be after the to date.";
+            return;
+        }
+
+        isLoading = true;
+        statusIsError = false;
+        statusMessage = null;
+
+        dailySales.Clear();
+        topMedicines.Clear();
+        recentSales.Clear();
+
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+
+            var database = scope.ServiceProvider
+                .GetRequiredService<ApplicationDbContext>();
+
+            var startUtc =
+                fromDate.Date.ToUniversalTime();
+
+            var endUtc =
+                toDate.Date.AddDays(1).ToUniversalTime();
+
+            var sales = await database.Sales
+                .AsNoTracking()
+                .Where(sale =>
+                    sale.SoldAtUtc >= startUtc &&
+                    sale.SoldAtUtc < endUtc &&
+                    sale.Status != SaleStatus.Cancelled &&
+                    sale.Status != SaleStatus.Refunded)
+                .OrderByDescending(sale => sale.SoldAtUtc)
+                .ToListAsync();
+
+            var saleItems = await database.SaleItems
+                .AsNoTracking()
+                .Include(item => item.Sale)
+                .Include(item => item.MedicineBatch)
+                .Where(item =>
+                    item.Sale != null &&
+                    item.Sale.SoldAtUtc >= startUtc &&
+                    item.Sale.SoldAtUtc < endUtc &&
+                    item.Sale.Status != SaleStatus.Cancelled &&
+                    item.Sale.Status != SaleStatus.Refunded)
+                .ToListAsync();
+
+            var purchases = await database.Purchases
+                .AsNoTracking()
+                .Where(purchase =>
+                    purchase.PurchaseDateUtc >= startUtc &&
+                    purchase.PurchaseDateUtc < endUtc &&
+                    purchase.Status == PurchaseStatus.Received)
+                .ToListAsync();
+
+            invoiceCount = sales.Count;
+            salesRevenue = sales.Sum(sale => sale.GrandTotal);
+            salesPaid = sales.Sum(sale => sale.PaidAmount);
+            salesDue = sales.Sum(sale => sale.DueAmount);
+            salesDiscounts =
+                sales.Sum(sale => sale.DiscountAmount);
+            salesTax = sales.Sum(sale => sale.TaxAmount);
+
+            itemSalesValue =
+                saleItems.Sum(item => item.LineTotal);
+
+            estimatedCostOfGoods =
+                saleItems.Sum(item =>
+                    item.Quantity *
+                    (item.MedicineBatch?.PurchasePrice ?? 0));
+
+            estimatedGrossProfit =
+                Math.Round(
+                    itemSalesValue - estimatedCostOfGoods,
+                    2);
+
+            grossMargin = itemSalesValue == 0
+                ? 0
+                : Math.Round(
+                    estimatedGrossProfit /
+                    itemSalesValue *
+                    100,
+                    1);
+
+            purchaseCount = purchases.Count;
+            purchaseValue =
+                purchases.Sum(purchase => purchase.GrandTotal);
+            purchasePaid =
+                purchases.Sum(purchase => purchase.PaidAmount);
+            purchaseDue =
+                purchases.Sum(purchase => purchase.DueAmount);
+
+            var unitsByDate = saleItems
+                .GroupBy(item =>
+                    item.Sale!.SoldAtUtc.ToLocalTime().Date)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Sum(item => item.Quantity));
+
+            dailySales.AddRange(
+                sales
+                    .GroupBy(sale =>
+                        sale.SoldAtUtc.ToLocalTime().Date)
+                    .Select(group =>
+                        new DailySalesRow(
+                            group.Key,
+                            group.Count(),
+                            unitsByDate.GetValueOrDefault(group.Key),
+                            group.Sum(sale => sale.GrandTotal),
+                            group.Sum(sale => sale.PaidAmount),
+                            group.Sum(sale => sale.DueAmount)))
+                    .OrderByDescending(row => row.Date));
+
+            topMedicines.AddRange(
+                saleItems
+                    .GroupBy(item =>
+                        $"{item.BrandName} {item.Strength}")
+                    .Select(group =>
+                        new TopMedicineRow(
+                            group.Key,
+                            group.Sum(item => item.Quantity),
+                            group.Sum(item => item.LineTotal)))
+                    .OrderByDescending(row => row.QuantitySold)
+                    .ThenByDescending(row => row.SalesValue)
+                    .Take(10));
+
+            recentSales.AddRange(sales.Take(20));
+
+            var today = DateTime.Today;
+
+            var availableBatches =
+                await database.MedicineBatches
+                    .AsNoTracking()
+                    .Where(batch =>
+                        batch.AvailableQuantity > 0 &&
+                        !batch.IsQuarantined &&
+                        batch.ExpiryDate >= today)
+                    .ToListAsync();
+
+            availableStockUnits =
+                availableBatches.Sum(
+                    batch => batch.AvailableQuantity);
+
+            inventoryCostValue =
+                availableBatches.Sum(batch =>
+                    batch.AvailableQuantity *
+                    batch.PurchasePrice);
+
+            inventoryRetailValue =
+                availableBatches.Sum(batch =>
+                    batch.AvailableQuantity *
+                    batch.SellingPrice);
+
+            customerReceivable =
+                await database.Customers
+                    .AsNoTracking()
+                    .SumAsync(customer =>
+                        (decimal?)customer.CurrentBalance) ?? 0;
+
+            supplierPayable =
+                await database.Suppliers
+                    .AsNoTracking()
+                    .SumAsync(supplier =>
+                        (decimal?)supplier.CurrentBalance) ?? 0;
+
+            statusMessage =
+                $"Report loaded for " +
+                $"{fromDate:dd MMM yyyy} to " +
+                $"{toDate:dd MMM yyyy}.";
+        }
+        catch (Exception exception)
+        {
+            statusIsError = true;
+            statusMessage =
+                "The report could not be loaded: " +
+                exception.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private static string FormatPaymentMethod(
+        PaymentMethod paymentMethod)
+    {
+        return paymentMethod switch
+        {
+            PaymentMethod.MobileBanking =>
+                "Mobile banking",
+            PaymentMethod.BankTransfer =>
+                "Bank transfer",
+            _ => paymentMethod.ToString()
+        };
+    }
+
+    private static string FormatSaleStatus(
+        SaleStatus status)
+    {
+        return status switch
+        {
+            SaleStatus.PartiallyPaid =>
+                "Partially paid",
+            _ => status.ToString()
+        };
+    }
+
+    private static string GetSaleStatusClass(
+        SaleStatus status)
+    {
+        return status switch
+        {
+            SaleStatus.Completed => "positive",
+            SaleStatus.Due => "warning",
+            SaleStatus.PartiallyPaid => "neutral",
+            SaleStatus.Cancelled => "warning",
+            SaleStatus.Refunded => "neutral",
+            _ => "neutral"
+        };
+    }
+
+    private sealed record DailySalesRow(
+        DateTime Date,
+        int InvoiceCount,
+        int UnitsSold,
+        decimal Sales,
+        decimal Paid,
+        decimal Due);
+
+    private sealed record TopMedicineRow(
+        string Name,
+        int QuantitySold,
+        decimal SalesValue);
+}
