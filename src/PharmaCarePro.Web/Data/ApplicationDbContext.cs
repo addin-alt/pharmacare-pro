@@ -26,6 +26,8 @@ public class ApplicationDbContext(
 
     public DbSet<PurchaseItem> PurchaseItems => Set<PurchaseItem>();
 
+    public DbSet<Customer> Customers => Set<Customer>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -148,6 +150,7 @@ public class ApplicationDbContext(
             entity.HasIndex(sale => sale.SoldAtUtc);
             entity.HasIndex(sale => sale.Status);
             entity.HasIndex(sale => sale.CustomerPhone);
+            entity.HasIndex(sale => sale.CustomerId);
 
             entity.Property(sale => sale.Subtotal).HasPrecision(18, 2);
             entity.Property(sale => sale.DiscountAmount).HasPrecision(18, 2);
@@ -163,6 +166,11 @@ public class ApplicationDbContext(
             entity.Property(sale => sale.Status)
                 .HasConversion<string>()
                 .HasMaxLength(40);
+
+            entity.HasOne(sale => sale.Customer)
+                .WithMany(customer => customer.Sales)
+                .HasForeignKey(sale => sale.CustomerId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         builder.Entity<SaleItem>(entity =>
@@ -340,6 +348,37 @@ public class ApplicationDbContext(
                 .WithMany()
                 .HasForeignKey(item => item.MedicineId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<Customer>(entity =>
+        {
+            entity.ToTable(
+                "Customers",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_Customers_CurrentBalance",
+                        "\"CurrentBalance\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_Customers_LoyaltyPoints",
+                        "\"LoyaltyPoints\" >= 0");
+                });
+
+            entity.HasKey(customer => customer.Id);
+
+            entity.HasIndex(customer => customer.CustomerCode)
+                .IsUnique();
+
+            entity.HasIndex(customer => customer.Name);
+            entity.HasIndex(customer => customer.Phone);
+            entity.HasIndex(customer => customer.IsActive);
+
+            entity.Property(customer => customer.DateOfBirth)
+                .HasColumnType("date");
+
+            entity.Property(customer => customer.CurrentBalance)
+                .HasPrecision(18, 2);
         });
 
     }

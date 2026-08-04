@@ -1,66 +1,573 @@
 @page "/customers"
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.EntityFrameworkCore
+@using PharmaCarePro.Domain.Entities
+@using PharmaCarePro.Web.Data
+@inject IServiceScopeFactory ScopeFactory
 
 <PageTitle>Customers | PharmaCare Pro</PageTitle>
 
 <div class="page-heading module-heading">
     <div>
-        <span class="eyebrow">PHARMACARE PRO MODULE</span>
+        <span class="eyebrow">CUSTOMER MANAGEMENT</span>
         <h1>Customers</h1>
-        <p>Maintain customer, patient and account records.</p>
+        <p>
+            Manage customer details, medical notes, balances
+            and loyalty information.
+        </p>
     </div>
 
-    <a class="button button-primary" href="">
+    <a class="button button-secondary" href="">
         Return to dashboard
     </a>
 </div>
 
-<section class="module-intro-card">
-    <div class="module-large-icon">♙</div>
-
-    <div class="module-intro-content">
-        <span class="module-status">FOUNDATION READY</span>
-        <h2>Customers module</h2>
-        <p>
-            The interface foundation is ready. Database entities, forms,
-            validation and operational workflows will be implemented in
-            the next development stages.
-        </p>
-
-        <div class="module-feature-grid">
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Contact and patient information</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Purchase and prescription history</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Allergies and medical notes</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Due balances and payment history</p>
-            </div>
-        </div>
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <div class="form-status customer-status
+         @(statusIsError ? "status-error" : "status-success")">
+        @statusMessage
     </div>
+}
+
+<section class="customer-summary-grid">
+    <article class="customer-summary-card">
+        <span>Total customers</span>
+        <strong>@customers.Count</strong>
+        <small>All registered customers</small>
+    </article>
+
+    <article class="customer-summary-card">
+        <span>Active customers</span>
+        <strong>@customers.Count(customer => customer.IsActive)</strong>
+        <small>Available for sales</small>
+    </article>
+
+    <article class="customer-summary-card">
+        <span>Outstanding balance</span>
+        <strong>
+            ৳@(customers
+                .Sum(customer => customer.CurrentBalance)
+                .ToString("N2"))
+        </strong>
+        <small>Total customer receivable</small>
+    </article>
+
+    <article class="customer-summary-card">
+        <span>Loyalty points</span>
+        <strong>
+            @customers.Sum(customer => customer.LoyaltyPoints)
+        </strong>
+        <small>Total awarded points</small>
+    </article>
 </section>
 
-<section class="dashboard-panel module-next-panel">
-    <div class="panel-heading">
-        <div>
-            <h2>Next implementation stage</h2>
-            <p>This module will be connected to Supabase PostgreSQL.</p>
+<div class="customer-workspace">
+    <section class="dashboard-panel customer-form-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Add customer</h2>
+                <p>Create a customer profile for future sales.</p>
+            </div>
         </div>
-    </div>
 
-    <div class="module-next-steps">
-        <span>Database entities</span>
-        <span>Validation rules</span>
-        <span>Create and edit forms</span>
-        <span>Search and filtering</span>
-        <span>Role permissions</span>
-        <span>Automated tests</span>
-    </div>
-</section>
+        <EditForm Model="form"
+                  OnValidSubmit="CreateCustomerAsync"
+                  FormName="customer-create">
+            <DataAnnotationsValidator />
+
+            <div class="customer-form-grid">
+                <div class="form-field">
+                    <label>Customer code</label>
+                    <InputText @bind-Value="form.CustomerCode"
+                               placeholder="CUS-0001" />
+                    <ValidationMessage
+                        For="() => form.CustomerCode" />
+                </div>
+
+                <div class="form-field">
+                    <label>Customer name</label>
+                    <InputText @bind-Value="form.Name"
+                               placeholder="Full name" />
+                    <ValidationMessage
+                        For="() => form.Name" />
+                </div>
+
+                <div class="form-field">
+                    <label>Phone number</label>
+                    <InputText @bind-Value="form.Phone"
+                               placeholder="01700000001" />
+                    <ValidationMessage
+                        For="() => form.Phone" />
+                </div>
+
+                <div class="form-field">
+                    <label>Email address</label>
+                    <InputText @bind-Value="form.Email"
+                               placeholder="customer@example.com" />
+                    <ValidationMessage
+                        For="() => form.Email" />
+                </div>
+
+                <div class="form-field">
+                    <label>Date of birth</label>
+                    <InputDate @bind-Value="form.DateOfBirth" />
+                </div>
+
+                <div class="form-field">
+                    <label>Opening balance</label>
+                    <InputNumber
+                        @bind-Value="form.CurrentBalance"
+                        min="0"
+                        step="0.01" />
+                    <ValidationMessage
+                        For="() => form.CurrentBalance" />
+                </div>
+
+                <div class="form-field">
+                    <label>Loyalty points</label>
+                    <InputNumber
+                        @bind-Value="form.LoyaltyPoints"
+                        min="0" />
+                    <ValidationMessage
+                        For="() => form.LoyaltyPoints" />
+                </div>
+
+                <div class="form-field customer-address-field">
+                    <label>Address</label>
+                    <InputTextArea @bind-Value="form.Address"
+                                   rows="2"
+                                   placeholder="Customer address" />
+                    <ValidationMessage
+                        For="() => form.Address" />
+                </div>
+
+                <div class="form-field customer-notes-field">
+                    <label>Allergies</label>
+                    <InputTextArea @bind-Value="form.Allergies"
+                                   rows="2"
+                                   placeholder="Known allergies" />
+                    <ValidationMessage
+                        For="() => form.Allergies" />
+                </div>
+
+                <div class="form-field customer-notes-field">
+                    <label>Medical notes</label>
+                    <InputTextArea @bind-Value="form.MedicalNotes"
+                                   rows="2"
+                                   placeholder="Optional medical notes" />
+                    <ValidationMessage
+                        For="() => form.MedicalNotes" />
+                </div>
+            </div>
+
+            <label class="customer-active-field">
+                <InputCheckbox @bind-Value="form.IsActive" />
+                <span>Customer is active</span>
+            </label>
+
+            <button class="button button-primary customer-save-button"
+                    type="submit"
+                    disabled="@isSaving">
+                @(isSaving
+                    ? "Saving customer..."
+                    : "Save customer")
+            </button>
+        </EditForm>
+    </section>
+
+    <section class="dashboard-panel customer-list-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Customer directory</h2>
+                <p>Search and manage registered customers.</p>
+            </div>
+        </div>
+
+        <input class="customer-search"
+               type="search"
+               @bind="searchText"
+               @bind:event="oninput"
+               placeholder="Search code, name, phone or email..." />
+
+        @if (isLoading)
+        {
+            <div class="medicine-empty-state">
+                <strong>Loading customers...</strong>
+            </div>
+        }
+        else if (!FilteredCustomers.Any())
+        {
+            <div class="medicine-empty-state customer-empty-state">
+                <span>♙</span>
+                <strong>No customers found</strong>
+                <p>Add the first customer using the form.</p>
+            </div>
+        }
+        else
+        {
+            <div class="customer-card-list">
+                @foreach (var customer in FilteredCustomers)
+                {
+                    <article class="customer-card" @key="customer.Id">
+                        <div class="customer-card-heading">
+                            <div class="customer-card-identity">
+                                <span class="customer-avatar">
+                                    @GetCustomerInitial(customer.Name)
+                                </span>
+
+                                <div>
+                                    <strong>@customer.Name</strong>
+                                    <small>@customer.CustomerCode</small>
+                                </div>
+                            </div>
+
+                            <span class="customer-status-pill
+                                @(customer.IsActive
+                                    ? "customer-status-active"
+                                    : "customer-status-inactive")">
+                                @(customer.IsActive
+                                    ? "Active"
+                                    : "Inactive")
+                            </span>
+                        </div>
+
+                        <div class="customer-details-grid">
+                            <div>
+                                <span>Phone</span>
+                                <strong>
+                                    @(customer.Phone ?? "Not provided")
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Email</span>
+                                <strong>
+                                    @(customer.Email ?? "Not provided")
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Date of birth</span>
+                                <strong>
+                                    @(customer.DateOfBirth.HasValue
+                                        ? customer.DateOfBirth.Value
+                                            .ToString("dd MMM yyyy")
+                                        : "Not provided")
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Balance</span>
+                                <strong>
+                                    ৳@customer.CurrentBalance.ToString("N2")
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Loyalty points</span>
+                                <strong>@customer.LoyaltyPoints</strong>
+                            </div>
+
+                            <div>
+                                <span>Registered</span>
+                                <strong>
+                                    @(customer.CreatedAtUtc
+                                        .ToLocalTime()
+                                        .ToString("dd MMM yyyy"))
+                                </strong>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(customer.Address))
+                        {
+                            <p class="customer-address">
+                                @customer.Address
+                            </p>
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(customer.Allergies))
+                        {
+                            <div class="customer-alert">
+                                <strong>Allergies</strong>
+                                <span>@customer.Allergies</span>
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(
+                            customer.MedicalNotes))
+                        {
+                            <div class="customer-medical-notes">
+                                <strong>Medical notes</strong>
+                                <span>@customer.MedicalNotes</span>
+                            </div>
+                        }
+
+                        <div class="customer-card-footer">
+                            <span>
+                                Account
+                                @(customer.CurrentBalance > 0
+                                    ? "has an outstanding balance"
+                                    : "is settled")
+                            </span>
+
+                            <button type="button"
+                                    class="customer-toggle-button
+                                        @(customer.IsActive
+                                            ? "customer-deactivate-button"
+                                            : "customer-activate-button")"
+                                    disabled="@isUpdating"
+                                    @onclick="() =>
+                                        ToggleCustomerAsync(customer.Id)">
+                                @(customer.IsActive
+                                    ? "Deactivate"
+                                    : "Activate")
+                            </button>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private List<Customer> customers = [];
+    private CustomerForm form = new();
+
+    private string searchText = string.Empty;
+    private string? statusMessage;
+
+    private bool statusIsError;
+    private bool isLoading = true;
+    private bool isSaving;
+    private bool isUpdating;
+
+    private IEnumerable<Customer> FilteredCustomers
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(searchText))
+            {
+                return customers;
+            }
+
+            var search = searchText.Trim();
+
+            return customers.Where(customer =>
+                customer.CustomerCode.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ||
+                customer.Name.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ||
+                (customer.Phone?.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (customer.Email?.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCustomersAsync();
+    }
+
+    private async Task LoadCustomersAsync()
+    {
+        isLoading = true;
+
+        using var scope = ScopeFactory.CreateScope();
+
+        var database = scope.ServiceProvider
+            .GetRequiredService<ApplicationDbContext>();
+
+        customers = await database.Customers
+            .AsNoTracking()
+            .OrderByDescending(customer => customer.IsActive)
+            .ThenBy(customer => customer.Name)
+            .ToListAsync();
+
+        isLoading = false;
+    }
+
+    private async Task CreateCustomerAsync()
+    {
+        isSaving = true;
+        statusMessage = null;
+        statusIsError = false;
+
+        try
+        {
+            if (form.DateOfBirth.HasValue &&
+                form.DateOfBirth.Value.Date >
+                DateTime.UtcNow.Date)
+            {
+                statusIsError = true;
+                statusMessage =
+                    "Date of birth cannot be in the future.";
+                return;
+            }
+
+            using var scope = ScopeFactory.CreateScope();
+
+            var database = scope.ServiceProvider
+                .GetRequiredService<ApplicationDbContext>();
+
+            var normalizedCode =
+                form.CustomerCode.Trim().ToUpperInvariant();
+
+            var duplicateCode = await database.Customers
+                .AnyAsync(customer =>
+                    customer.CustomerCode == normalizedCode);
+
+            if (duplicateCode)
+            {
+                statusIsError = true;
+                statusMessage =
+                    $"Customer code {normalizedCode} already exists.";
+                return;
+            }
+
+            var now = DateTime.UtcNow;
+
+            var customer = new Customer
+            {
+                CustomerCode = normalizedCode,
+                Name = form.Name.Trim(),
+                Phone = Normalize(form.Phone),
+                Email = Normalize(form.Email),
+                Address = Normalize(form.Address),
+                DateOfBirth = form.DateOfBirth?.Date,
+                Allergies = Normalize(form.Allergies),
+                MedicalNotes = Normalize(form.MedicalNotes),
+                CurrentBalance =
+                    Math.Round(form.CurrentBalance, 2),
+                LoyaltyPoints = form.LoyaltyPoints,
+                IsActive = form.IsActive,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            };
+
+            database.Customers.Add(customer);
+
+            await database.SaveChangesAsync();
+
+            statusMessage =
+                $"Customer {customer.Name} was added successfully.";
+
+            form = new CustomerForm();
+
+            await LoadCustomersAsync();
+        }
+        catch (DbUpdateException)
+        {
+            statusIsError = true;
+            statusMessage =
+                "The customer could not be saved. " +
+                "Check the customer code and try again.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task ToggleCustomerAsync(Guid customerId)
+    {
+        isUpdating = true;
+        statusMessage = null;
+        statusIsError = false;
+
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+
+            var database = scope.ServiceProvider
+                .GetRequiredService<ApplicationDbContext>();
+
+            var customer = await database.Customers
+                .SingleOrDefaultAsync(item =>
+                    item.Id == customerId);
+
+            if (customer is null)
+            {
+                statusIsError = true;
+                statusMessage = "Customer was not found.";
+                return;
+            }
+
+            customer.IsActive = !customer.IsActive;
+            customer.UpdatedAtUtc = DateTime.UtcNow;
+
+            await database.SaveChangesAsync();
+
+            statusMessage =
+                $"{customer.Name} is now " +
+                $"{(customer.IsActive ? "active" : "inactive")}.";
+
+            await LoadCustomersAsync();
+        }
+        finally
+        {
+            isUpdating = false;
+        }
+    }
+
+    private static string GetCustomerInitial(string name)
+    {
+        return string.IsNullOrWhiteSpace(name)
+            ? "C"
+            : name.Trim()[0].ToString().ToUpperInvariant();
+    }
+
+    private static string? Normalize(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Trim();
+    }
+
+    private sealed class CustomerForm
+    {
+        [Required(ErrorMessage = "Customer code is required.")]
+        [StringLength(30)]
+        [RegularExpression(
+            "^[A-Za-z0-9][A-Za-z0-9-]*$",
+            ErrorMessage =
+                "Use letters, numbers and hyphens only.")]
+        public string CustomerCode { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Customer name is required.")]
+        [StringLength(150)]
+        public string Name { get; set; } = string.Empty;
+
+        [StringLength(30)]
+        public string? Phone { get; set; }
+
+        [EmailAddress(ErrorMessage = "Enter a valid email address.")]
+        [StringLength(160)]
+        public string? Email { get; set; }
+
+        [StringLength(300)]
+        public string? Address { get; set; }
+
+        public DateTime? DateOfBirth { get; set; }
+
+        [StringLength(500)]
+        public string? Allergies { get; set; }
+
+        [StringLength(500)]
+        public string? MedicalNotes { get; set; }
+
+        [Range(typeof(decimal), "0", "999999999")]
+        public decimal CurrentBalance { get; set; }
+
+        [Range(0, 100_000_000)]
+        public int LoyaltyPoints { get; set; }
+
+        public bool IsActive { get; set; } = true;
+    }
+}

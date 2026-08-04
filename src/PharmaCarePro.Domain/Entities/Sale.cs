@@ -10,6 +10,10 @@ public sealed class Sale : IValidatableObject
     [StringLength(50)]
     public string InvoiceNumber { get; set; } = string.Empty;
 
+    public Guid? CustomerId { get; set; }
+
+    public Customer? Customer { get; set; }
+
     [StringLength(120)]
     public string? CustomerName { get; set; }
 
