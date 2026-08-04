@@ -1,66 +1,964 @@
 @page "/purchases"
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.EntityFrameworkCore
+@using PharmaCarePro.Domain.Entities
+@using PharmaCarePro.Web.Data
+@inject IServiceScopeFactory ScopeFactory
 
 <PageTitle>Purchases | PharmaCare Pro</PageTitle>
 
 <div class="page-heading module-heading">
     <div>
-        <span class="eyebrow">PHARMACARE PRO MODULE</span>
+        <span class="eyebrow">PURCHASE RECEIVING</span>
         <h1>Purchases</h1>
-        <p>Receive stock and manage supplier purchases.</p>
+        <p>
+            Receive supplier invoices, create medicine batches and
+            update inventory automatically.
+        </p>
     </div>
 
-    <a class="button button-primary" href="">
+    <a class="button button-secondary" href="">
         Return to dashboard
     </a>
 </div>
 
-<section class="module-intro-card">
-    <div class="module-large-icon">↓</div>
-
-    <div class="module-intro-content">
-        <span class="module-status">FOUNDATION READY</span>
-        <h2>Purchases module</h2>
-        <p>
-            The interface foundation is ready. Database entities, forms,
-            validation and operational workflows will be implemented in
-            the next development stages.
-        </p>
-
-        <div class="module-feature-grid">
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Purchase invoices and goods receiving</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Automatic medicine batch creation</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Supplier payments and balances</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Purchase returns and damaged items</p>
-            </div>
-        </div>
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <div class="form-status purchase-status
+         @(statusIsError ? "status-error" : "status-success")">
+        @statusMessage
     </div>
+}
+
+<section class="purchase-summary-grid">
+    <article class="purchase-summary-card">
+        <span>Purchase receipts</span>
+        <strong>@totalPurchases</strong>
+        <small>Received supplier invoices</small>
+    </article>
+
+    <article class="purchase-summary-card">
+        <span>Total purchases</span>
+        <strong>৳@totalPurchaseValue.ToString("N2")</strong>
+        <small>Lifetime received value</small>
+    </article>
+
+    <article class="purchase-summary-card">
+        <span>Supplier payable</span>
+        <strong>৳@totalPurchaseDue.ToString("N2")</strong>
+        <small>Outstanding purchase dues</small>
+    </article>
+
+    <article class="purchase-summary-card">
+        <span>Units received</span>
+        <strong>@totalUnitsReceived</strong>
+        <small>Purchased and free units</small>
+    </article>
 </section>
 
-<section class="dashboard-panel module-next-panel">
-    <div class="panel-heading">
-        <div>
-            <h2>Next implementation stage</h2>
-            <p>This module will be connected to Supabase PostgreSQL.</p>
+<div class="purchase-workspace">
+    <section class="dashboard-panel purchase-entry-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>New purchase receipt</h2>
+                <p>Select a supplier and add medicine batches.</p>
+            </div>
         </div>
-    </div>
 
-    <div class="module-next-steps">
-        <span>Database entities</span>
-        <span>Validation rules</span>
-        <span>Create and edit forms</span>
-        <span>Search and filtering</span>
-        <span>Role permissions</span>
-        <span>Automated tests</span>
-    </div>
-</section>
+        <div class="purchase-header-grid">
+            <div class="form-field">
+                <label>Supplier</label>
+                <select @bind="selectedSupplierId">
+                    <option value="@Guid.Empty">
+                        Select an active supplier
+                    </option>
+
+                    @foreach (var supplier in suppliers)
+                    {
+                        <option value="@supplier.Id">
+                            @supplier.SupplierCode · @supplier.Name
+                        </option>
+                    }
+                </select>
+            </div>
+
+            <div class="form-field">
+                <label>Supplier invoice number</label>
+                <input @bind="supplierInvoiceNumber"
+                       placeholder="Optional invoice reference" />
+            </div>
+        </div>
+
+        <EditForm Model="lineForm"
+                  OnValidSubmit="AddLineAsync"
+                  FormName="purchase-line">
+            <DataAnnotationsValidator />
+
+            <div class="purchase-line-form">
+                <div class="form-field purchase-medicine-field">
+                    <label>Medicine</label>
+                    <InputSelect @bind-Value="lineForm.MedicineId">
+                        <option value="@Guid.Empty">
+                            Select medicine
+                        </option>
+
+                        @foreach (var medicine in medicines)
+                        {
+                            <option value="@medicine.Id">
+                                @medicine.BrandName ·
+                                @medicine.Strength ·
+                                @medicine.DosageForm
+                            </option>
+                        }
+                    </InputSelect>
+                    <ValidationMessage
+                        For="() => lineForm.MedicineId" />
+                </div>
+
+                <div class="form-field">
+                    <label>Batch number</label>
+                    <InputText @bind-Value="lineForm.BatchNumber"
+                               placeholder="BATCH-0001" />
+                    <ValidationMessage
+                        For="() => lineForm.BatchNumber" />
+                </div>
+
+                <div class="form-field">
+                    <label>Manufacturing date</label>
+                    <InputDate
+                        @bind-Value="lineForm.ManufacturingDate" />
+                </div>
+
+                <div class="form-field">
+                    <label>Expiry date</label>
+                    <InputDate @bind-Value="lineForm.ExpiryDate" />
+                    <ValidationMessage
+                        For="() => lineForm.ExpiryDate" />
+                </div>
+
+                <div class="form-field">
+                    <label>Purchase quantity</label>
+                    <InputNumber @bind-Value="lineForm.Quantity"
+                                 min="1" />
+                    <ValidationMessage
+                        For="() => lineForm.Quantity" />
+                </div>
+
+                <div class="form-field">
+                    <label>Free quantity</label>
+                    <InputNumber @bind-Value="lineForm.FreeQuantity"
+                                 min="0" />
+                    <ValidationMessage
+                        For="() => lineForm.FreeQuantity" />
+                </div>
+
+                <div class="form-field">
+                    <label>Purchase price</label>
+                    <InputNumber
+                        @bind-Value="lineForm.PurchasePrice"
+                        min="0"
+                        step="0.01" />
+                    <ValidationMessage
+                        For="() => lineForm.PurchasePrice" />
+                </div>
+
+                <div class="form-field">
+                    <label>Selling price</label>
+                    <InputNumber
+                        @bind-Value="lineForm.SellingPrice"
+                        min="0"
+                        step="0.01" />
+                    <ValidationMessage
+                        For="() => lineForm.SellingPrice" />
+                </div>
+
+                <div class="form-field">
+                    <label>Rack location</label>
+                    <InputText @bind-Value="lineForm.RackLocation"
+                               placeholder="Optional" />
+                    <ValidationMessage
+                        For="() => lineForm.RackLocation" />
+                </div>
+
+                <button class="button button-secondary purchase-add-line"
+                        type="submit"
+                        disabled="@isProcessing">
+                    Add batch line
+                </button>
+            </div>
+        </EditForm>
+
+        @if (cart.Count == 0)
+        {
+            <div class="medicine-empty-state purchase-empty-cart">
+                <span>▤</span>
+                <strong>No purchase lines added</strong>
+                <p>Add at least one medicine batch to continue.</p>
+            </div>
+        }
+        else
+        {
+            <div class="purchase-cart">
+                @foreach (var line in cart)
+                {
+                    <article class="purchase-cart-line"
+                             @key="line.LineId">
+                        <div class="purchase-cart-heading">
+                            <div>
+                                <strong>@line.MedicineName</strong>
+                                <small>
+                                    Batch @line.BatchNumber ·
+                                    expires
+                                    @line.ExpiryDate.ToString("dd MMM yyyy")
+                                </small>
+                            </div>
+
+                            <strong>৳@line.LineTotal.ToString("N2")</strong>
+                        </div>
+
+                        <div class="purchase-cart-details">
+                            <span>
+                                Quantity:
+                                <strong>@line.Quantity</strong>
+                            </span>
+
+                            <span>
+                                Free:
+                                <strong>@line.FreeQuantity</strong>
+                            </span>
+
+                            <span>
+                                Cost:
+                                <strong>
+                                    ৳@line.PurchasePrice.ToString("N2")
+                                </strong>
+                            </span>
+
+                            <span>
+                                Sell:
+                                <strong>
+                                    ৳@line.SellingPrice.ToString("N2")
+                                </strong>
+                            </span>
+                        </div>
+
+                        <button class="purchase-remove-line"
+                                type="button"
+                                @onclick="() => RemoveLine(line.LineId)">
+                            Remove
+                        </button>
+                    </article>
+                }
+            </div>
+        }
+
+        <div class="purchase-payment-grid">
+            <div class="form-field">
+                <label>Discount</label>
+                <input type="number"
+                       min="0"
+                       step="0.01"
+                       @bind="discountAmount" />
+            </div>
+
+            <div class="form-field">
+                <label>Tax</label>
+                <input type="number"
+                       min="0"
+                       step="0.01"
+                       @bind="taxAmount" />
+            </div>
+
+            <div class="form-field">
+                <label>Payment method</label>
+                <select @bind="paymentMethod">
+                    @foreach (var method in
+                        Enum.GetValues<PaymentMethod>())
+                    {
+                        <option value="@method">
+                            @FormatPaymentMethod(method)
+                        </option>
+                    }
+                </select>
+            </div>
+
+            <div class="form-field">
+                <label>Amount paid</label>
+                <input type="number"
+                       min="0"
+                       step="0.01"
+                       @bind="amountPaid" />
+            </div>
+
+            <div class="form-field purchase-notes-field">
+                <label>Notes</label>
+                <textarea @bind="notes"
+                          rows="2"
+                          placeholder="Optional purchase notes"></textarea>
+            </div>
+        </div>
+
+        <button class="purchase-full-payment"
+                type="button"
+                disabled="@(cart.Count == 0)"
+                @onclick="SetFullPayment">
+            Set full payment
+        </button>
+
+        <div class="purchase-totals">
+            <div>
+                <span>Subtotal</span>
+                <strong>৳@Subtotal.ToString("N2")</strong>
+            </div>
+
+            <div>
+                <span>Discount</span>
+                <strong>৳@discountAmount.ToString("N2")</strong>
+            </div>
+
+            <div>
+                <span>Tax</span>
+                <strong>৳@taxAmount.ToString("N2")</strong>
+            </div>
+
+            <div class="purchase-grand-total">
+                <span>Grand total</span>
+                <strong>৳@GrandTotal.ToString("N2")</strong>
+            </div>
+
+            <div>
+                <span>Due</span>
+                <strong>৳@DueAmount.ToString("N2")</strong>
+            </div>
+
+            <div>
+                <span>Change</span>
+                <strong>৳@ChangeAmount.ToString("N2")</strong>
+            </div>
+        </div>
+
+        <button class="button button-primary purchase-receive-button"
+                type="button"
+                disabled="@(cart.Count == 0 || isProcessing)"
+                @onclick="ReceivePurchaseAsync">
+            @(isProcessing
+                ? "Receiving purchase..."
+                : "Receive purchase and update stock")
+        </button>
+    </section>
+
+    <section class="dashboard-panel purchase-history-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Recent purchases</h2>
+                <p>Latest supplier receipts and payment status.</p>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="medicine-empty-state">
+                <strong>Loading purchases...</strong>
+            </div>
+        }
+        else if (recentPurchases.Count == 0)
+        {
+            <div class="medicine-empty-state purchase-empty-history">
+                <span>↓</span>
+                <strong>No purchases received</strong>
+                <p>The first completed receipt will appear here.</p>
+            </div>
+        }
+        else
+        {
+            <div class="purchase-history-list">
+                @foreach (var purchase in recentPurchases)
+                {
+                    <article class="purchase-history-card"
+                             @key="purchase.Id">
+                        <div class="purchase-history-heading">
+                            <div>
+                                <strong>@purchase.PurchaseNumber</strong>
+                                <small>
+                                    @(purchase.PurchaseDateUtc
+                                        .ToLocalTime()
+                                        .ToString("dd MMM yyyy, hh:mm tt"))
+                                </small>
+                            </div>
+
+                            <span class="purchase-history-status">
+                                @purchase.Status
+                            </span>
+                        </div>
+
+                        <div class="purchase-history-supplier">
+                            <span>Supplier</span>
+                            <strong>
+                                @(purchase.Supplier?.Name ??
+                                    "Unknown supplier")
+                            </strong>
+                        </div>
+
+                        <div class="purchase-history-values">
+                            <div>
+                                <span>Units</span>
+                                <strong>
+                                    @purchase.Items.Sum(
+                                        item =>
+                                            item.Quantity +
+                                            item.FreeQuantity)
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Total</span>
+                                <strong>
+                                    ৳@purchase.GrandTotal.ToString("N2")
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Paid</span>
+                                <strong>
+                                    ৳@purchase.PaidAmount.ToString("N2")
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>Due</span>
+                                <strong>
+                                    ৳@purchase.DueAmount.ToString("N2")
+                                </strong>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(
+                            purchase.SupplierInvoiceNumber))
+                        {
+                            <small class="purchase-supplier-reference">
+                                Supplier invoice:
+                                @purchase.SupplierInvoiceNumber
+                            </small>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private List<Supplier> suppliers = [];
+    private List<Medicine> medicines = [];
+    private List<Purchase> recentPurchases = [];
+    private readonly List<PurchaseCartLine> cart = [];
+
+    private PurchaseLineForm lineForm = CreateNewLineForm();
+
+    private Guid selectedSupplierId = Guid.Empty;
+    private string? supplierInvoiceNumber;
+    private string? notes;
+    private string? statusMessage;
+
+    private decimal discountAmount;
+    private decimal taxAmount;
+    private decimal amountPaid;
+
+    private PaymentMethod paymentMethod = PaymentMethod.Cash;
+
+    private int totalPurchases;
+    private int totalUnitsReceived;
+    private decimal totalPurchaseValue;
+    private decimal totalPurchaseDue;
+
+    private bool statusIsError;
+    private bool isLoading = true;
+    private bool isProcessing;
+
+    private decimal Subtotal =>
+        Math.Round(cart.Sum(line => line.LineTotal), 2);
+
+    private decimal GrandTotal =>
+        Math.Max(
+            0,
+            Math.Round(
+                Subtotal - discountAmount + taxAmount,
+                2));
+
+    private decimal DueAmount =>
+        Math.Max(
+            0,
+            Math.Round(
+                GrandTotal - amountPaid,
+                2));
+
+    private decimal ChangeAmount =>
+        Math.Max(
+            0,
+            Math.Round(
+                amountPaid - GrandTotal,
+                2));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPageAsync();
+    }
+
+    private async Task LoadPageAsync()
+    {
+        isLoading = true;
+
+        using var scope = ScopeFactory.CreateScope();
+
+        var database = scope.ServiceProvider
+            .GetRequiredService<ApplicationDbContext>();
+
+        suppliers = await database.Suppliers
+            .AsNoTracking()
+            .Where(supplier => supplier.IsActive)
+            .OrderBy(supplier => supplier.Name)
+            .ToListAsync();
+
+        medicines = await database.Medicines
+            .AsNoTracking()
+            .Where(medicine => medicine.IsActive)
+            .OrderBy(medicine => medicine.BrandName)
+            .ThenBy(medicine => medicine.Strength)
+            .ToListAsync();
+
+        recentPurchases = await database.Purchases
+            .AsNoTracking()
+            .Include(purchase => purchase.Supplier)
+            .Include(purchase => purchase.Items)
+            .OrderByDescending(purchase => purchase.PurchaseDateUtc)
+            .Take(20)
+            .ToListAsync();
+
+        totalPurchases = await database.Purchases.CountAsync();
+
+        totalPurchaseValue =
+            await database.Purchases
+                .Where(purchase =>
+                    purchase.Status == PurchaseStatus.Received)
+                .SumAsync(purchase =>
+                    (decimal?)purchase.GrandTotal) ?? 0;
+
+        totalPurchaseDue =
+            await database.Purchases
+                .Where(purchase =>
+                    purchase.Status == PurchaseStatus.Received)
+                .SumAsync(purchase =>
+                    (decimal?)purchase.DueAmount) ?? 0;
+
+        totalUnitsReceived =
+            await database.PurchaseItems
+                .SumAsync(item =>
+                    (int?)(item.Quantity + item.FreeQuantity)) ?? 0;
+
+        isLoading = false;
+    }
+
+    private Task AddLineAsync()
+    {
+        statusMessage = null;
+        statusIsError = false;
+
+        var medicine = medicines.SingleOrDefault(
+            item => item.Id == lineForm.MedicineId);
+
+        if (medicine is null)
+        {
+            statusIsError = true;
+            statusMessage = "Select a valid medicine.";
+            return Task.CompletedTask;
+        }
+
+        if (lineForm.ManufacturingDate.HasValue &&
+            lineForm.ExpiryDate.Date <=
+            lineForm.ManufacturingDate.Value.Date)
+        {
+            statusIsError = true;
+            statusMessage =
+                "Expiry date must be after the manufacturing date.";
+            return Task.CompletedTask;
+        }
+
+        var normalizedBatch =
+            lineForm.BatchNumber.Trim().ToUpperInvariant();
+
+        var duplicateLine = cart.Any(line =>
+            line.MedicineId == lineForm.MedicineId &&
+            line.BatchNumber.Equals(
+                normalizedBatch,
+                StringComparison.OrdinalIgnoreCase));
+
+        if (duplicateLine)
+        {
+            statusIsError = true;
+            statusMessage =
+                "This medicine and batch are already in the receipt.";
+            return Task.CompletedTask;
+        }
+
+        cart.Add(new PurchaseCartLine(
+            Guid.NewGuid(),
+            medicine.Id,
+            $"{medicine.BrandName} {medicine.Strength}",
+            normalizedBatch,
+            lineForm.ManufacturingDate,
+            lineForm.ExpiryDate,
+            lineForm.Quantity,
+            lineForm.FreeQuantity,
+            Math.Round(lineForm.PurchasePrice, 2),
+            Math.Round(lineForm.SellingPrice, 2),
+            Normalize(lineForm.RackLocation)));
+
+        lineForm = CreateNewLineForm();
+
+        return Task.CompletedTask;
+    }
+
+    private void RemoveLine(Guid lineId)
+    {
+        cart.RemoveAll(line => line.LineId == lineId);
+    }
+
+    private void SetFullPayment()
+    {
+        amountPaid = GrandTotal;
+    }
+
+    private async Task ReceivePurchaseAsync()
+    {
+        if (selectedSupplierId == Guid.Empty)
+        {
+            statusIsError = true;
+            statusMessage = "Select a supplier.";
+            return;
+        }
+
+        if (cart.Count == 0)
+        {
+            statusIsError = true;
+            statusMessage =
+                "Add at least one medicine batch.";
+            return;
+        }
+
+        if (discountAmount > Subtotal)
+        {
+            statusIsError = true;
+            statusMessage =
+                "Discount cannot exceed the subtotal.";
+            return;
+        }
+
+        isProcessing = true;
+        statusMessage = null;
+        statusIsError = false;
+
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+
+            var database = scope.ServiceProvider
+                .GetRequiredService<ApplicationDbContext>();
+
+            await using var transaction =
+                await database.Database.BeginTransactionAsync(
+                    System.Data.IsolationLevel.Serializable);
+
+            var supplier = await database.Suppliers
+                .SingleOrDefaultAsync(item =>
+                    item.Id == selectedSupplierId &&
+                    item.IsActive);
+
+            if (supplier is null)
+            {
+                throw new InvalidOperationException(
+                    "The selected supplier is not available.");
+            }
+
+            var now = DateTime.UtcNow;
+
+            var purchaseNumber =
+                $"PUR-{now:yyyyMMddHHmmss}-" +
+                $"{Random.Shared.Next(100, 999)}";
+
+            var purchase = new Purchase
+            {
+                PurchaseNumber = purchaseNumber,
+                SupplierId = supplier.Id,
+                SupplierInvoiceNumber =
+                    Normalize(supplierInvoiceNumber),
+                PurchaseDateUtc = now,
+                Subtotal = Subtotal,
+                DiscountAmount =
+                    Math.Round(discountAmount, 2),
+                TaxAmount =
+                    Math.Round(taxAmount, 2),
+                GrandTotal = GrandTotal,
+                PaidAmount =
+                    Math.Min(
+                        GrandTotal,
+                        Math.Max(0, Math.Round(amountPaid, 2))),
+                PaymentMethod = paymentMethod,
+                Status = PurchaseStatus.Received,
+                Notes = Normalize(notes),
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            };
+
+            purchase.DueAmount =
+                Math.Round(
+                    purchase.GrandTotal -
+                    purchase.PaidAmount,
+                    2);
+
+            if (purchase.PaidAmount == 0)
+            {
+                purchase.PaymentMethod = PaymentMethod.Due;
+            }
+
+            foreach (var line in cart)
+            {
+                var medicine = await database.Medicines
+                    .SingleOrDefaultAsync(item =>
+                        item.Id == line.MedicineId &&
+                        item.IsActive);
+
+                if (medicine is null)
+                {
+                    throw new InvalidOperationException(
+                        $"{line.MedicineName} is no longer active.");
+                }
+
+                var batch = await database.MedicineBatches
+                    .SingleOrDefaultAsync(item =>
+                        item.MedicineId == line.MedicineId &&
+                        item.BatchNumber == line.BatchNumber);
+
+                var receivedUnits =
+                    line.Quantity + line.FreeQuantity;
+
+                if (batch is null)
+                {
+                    batch = new MedicineBatch
+                    {
+                        MedicineId = medicine.Id,
+                        BatchNumber = line.BatchNumber,
+                        ManufacturingDate =
+                            line.ManufacturingDate,
+                        ExpiryDate = line.ExpiryDate,
+                        ReceivedQuantity = line.Quantity,
+                        FreeQuantity = line.FreeQuantity,
+                        AvailableQuantity = receivedUnits,
+                        PurchasePrice = line.PurchasePrice,
+                        SellingPrice = line.SellingPrice,
+                        SupplierName = supplier.Name,
+                        PurchaseReference = purchaseNumber,
+                        RackLocation = line.RackLocation,
+                        IsQuarantined = false,
+                        CreatedAtUtc = now,
+                        UpdatedAtUtc = now
+                    };
+
+                    database.MedicineBatches.Add(batch);
+                }
+                else
+                {
+                    if (batch.ExpiryDate.Date !=
+                        line.ExpiryDate.Date)
+                    {
+                        throw new InvalidOperationException(
+                            $"Batch {line.BatchNumber} already exists " +
+                            "with a different expiry date.");
+                    }
+
+                    batch.ReceivedQuantity += line.Quantity;
+                    batch.FreeQuantity += line.FreeQuantity;
+                    batch.AvailableQuantity += receivedUnits;
+                    batch.PurchasePrice = line.PurchasePrice;
+                    batch.SellingPrice = line.SellingPrice;
+                    batch.SupplierName = supplier.Name;
+                    batch.PurchaseReference = purchaseNumber;
+
+                    if (line.ManufacturingDate.HasValue)
+                    {
+                        batch.ManufacturingDate =
+                            line.ManufacturingDate;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(
+                        line.RackLocation))
+                    {
+                        batch.RackLocation = line.RackLocation;
+                    }
+
+                    batch.UpdatedAtUtc = now;
+                }
+
+                purchase.Items.Add(new PurchaseItem
+                {
+                    MedicineId = medicine.Id,
+                    MedicineName = line.MedicineName,
+                    BatchNumber = line.BatchNumber,
+                    ManufacturingDate =
+                        line.ManufacturingDate,
+                    ExpiryDate = line.ExpiryDate,
+                    Quantity = line.Quantity,
+                    FreeQuantity = line.FreeQuantity,
+                    PurchasePrice = line.PurchasePrice,
+                    SellingPrice = line.SellingPrice,
+                    LineTotal = line.LineTotal,
+                    RackLocation = line.RackLocation
+                });
+
+                database.StockMovements.Add(new StockMovement
+                {
+                    MedicineBatchId = batch.Id,
+                    MovementType =
+                        StockMovementType.PurchaseReceipt,
+                    QuantityChange = receivedUnits,
+                    BalanceAfter = batch.AvailableQuantity,
+                    ReferenceNumber = purchaseNumber,
+                    Notes =
+                        $"Received from {supplier.Name}.",
+                    CreatedAtUtc = now
+                });
+            }
+
+            supplier.CurrentBalance =
+                Math.Round(
+                    supplier.CurrentBalance +
+                    purchase.DueAmount,
+                    2);
+
+            supplier.UpdatedAtUtc = now;
+
+            database.Purchases.Add(purchase);
+
+            await database.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            statusMessage =
+                $"Purchase {purchaseNumber} received successfully. " +
+                $"{cart.Sum(line => line.Quantity + line.FreeQuantity)} " +
+                "units were added to inventory.";
+
+            cart.Clear();
+            selectedSupplierId = Guid.Empty;
+            supplierInvoiceNumber = null;
+            notes = null;
+            discountAmount = 0;
+            taxAmount = 0;
+            amountPaid = 0;
+            paymentMethod = PaymentMethod.Cash;
+            lineForm = CreateNewLineForm();
+
+            await LoadPageAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            statusIsError = true;
+            statusMessage = exception.Message;
+        }
+        catch (DbUpdateException)
+        {
+            statusIsError = true;
+            statusMessage =
+                "The purchase could not be received. " +
+                "Check the batch details and try again.";
+        }
+        catch (Exception exception)
+        {
+            statusIsError = true;
+            statusMessage =
+                $"The purchase could not be received: " +
+                exception.Message;
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+
+    private static PurchaseLineForm CreateNewLineForm()
+    {
+        var today = DateTime.UtcNow.Date;
+
+        return new PurchaseLineForm
+        {
+            ManufacturingDate = today,
+            ExpiryDate = today.AddYears(2),
+            Quantity = 1
+        };
+    }
+
+    private static string FormatPaymentMethod(
+        PaymentMethod method)
+    {
+        return method switch
+        {
+            PaymentMethod.MobileBanking =>
+                "Mobile banking",
+            PaymentMethod.BankTransfer =>
+                "Bank transfer",
+            _ => method.ToString()
+        };
+    }
+
+    private static string? Normalize(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Trim();
+    }
+
+    private sealed class PurchaseLineForm
+    {
+        [Required]
+        public Guid MedicineId { get; set; }
+
+        [Required(ErrorMessage = "Batch number is required.")]
+        [StringLength(80)]
+        public string BatchNumber { get; set; } = string.Empty;
+
+        public DateTime? ManufacturingDate { get; set; }
+
+        [Required]
+        public DateTime ExpiryDate { get; set; }
+
+        [Range(1, 10_000_000)]
+        public int Quantity { get; set; } = 1;
+
+        [Range(0, 10_000_000)]
+        public int FreeQuantity { get; set; }
+
+        [Range(typeof(decimal), "0", "999999999")]
+        public decimal PurchasePrice { get; set; }
+
+        [Range(typeof(decimal), "0", "999999999")]
+        public decimal SellingPrice { get; set; }
+
+        [StringLength(50)]
+        public string? RackLocation { get; set; }
+    }
+
+    private sealed record PurchaseCartLine(
+        Guid LineId,
+        Guid MedicineId,
+        string MedicineName,
+        string BatchNumber,
+        DateTime? ManufacturingDate,
+        DateTime ExpiryDate,
+        int Quantity,
+        int FreeQuantity,
+        decimal PurchasePrice,
+        decimal SellingPrice,
+        string? RackLocation)
+    {
+        public decimal LineTotal =>
+            Math.Round(Quantity * PurchasePrice, 2);
+    }
+}

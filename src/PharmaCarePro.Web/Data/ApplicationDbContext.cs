@@ -22,6 +22,10 @@ public class ApplicationDbContext(
 
     public DbSet<Supplier> Suppliers => Set<Supplier>();
 
+    public DbSet<Purchase> Purchases => Set<Purchase>();
+
+    public DbSet<PurchaseItem> PurchaseItems => Set<PurchaseItem>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -220,6 +224,122 @@ public class ApplicationDbContext(
 
             entity.Property(supplier => supplier.CurrentBalance)
                 .HasPrecision(18, 2);
+        });
+
+        builder.Entity<Purchase>(entity =>
+        {
+            entity.ToTable(
+                "Purchases",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_Purchases_Subtotal",
+                        "\"Subtotal\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_Purchases_GrandTotal",
+                        "\"GrandTotal\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_Purchases_PaidAmount",
+                        "\"PaidAmount\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_Purchases_DueAmount",
+                        "\"DueAmount\" >= 0");
+                });
+
+            entity.HasKey(purchase => purchase.Id);
+
+            entity.HasIndex(purchase => purchase.PurchaseNumber)
+                .IsUnique();
+
+            entity.HasIndex(purchase => purchase.SupplierId);
+            entity.HasIndex(purchase => purchase.PurchaseDateUtc);
+            entity.HasIndex(purchase => purchase.Status);
+
+            entity.Property(purchase => purchase.Subtotal)
+                .HasPrecision(18, 2);
+
+            entity.Property(purchase => purchase.DiscountAmount)
+                .HasPrecision(18, 2);
+
+            entity.Property(purchase => purchase.TaxAmount)
+                .HasPrecision(18, 2);
+
+            entity.Property(purchase => purchase.GrandTotal)
+                .HasPrecision(18, 2);
+
+            entity.Property(purchase => purchase.PaidAmount)
+                .HasPrecision(18, 2);
+
+            entity.Property(purchase => purchase.DueAmount)
+                .HasPrecision(18, 2);
+
+            entity.Property(purchase => purchase.PaymentMethod)
+                .HasConversion<string>()
+                .HasMaxLength(40);
+
+            entity.Property(purchase => purchase.Status)
+                .HasConversion<string>()
+                .HasMaxLength(40);
+
+            entity.HasOne(purchase => purchase.Supplier)
+                .WithMany()
+                .HasForeignKey(purchase => purchase.SupplierId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<PurchaseItem>(entity =>
+        {
+            entity.ToTable(
+                "PurchaseItems",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_PurchaseItems_Quantity",
+                        "\"Quantity\" > 0");
+
+                    table.HasCheckConstraint(
+                        "CK_PurchaseItems_FreeQuantity",
+                        "\"FreeQuantity\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_PurchaseItems_LineTotal",
+                        "\"LineTotal\" >= 0");
+                });
+
+            entity.HasKey(item => item.Id);
+
+            entity.HasIndex(item => item.PurchaseId);
+            entity.HasIndex(item => item.MedicineId);
+            entity.HasIndex(item => item.BatchNumber);
+            entity.HasIndex(item => item.ExpiryDate);
+
+            entity.Property(item => item.ManufacturingDate)
+                .HasColumnType("date");
+
+            entity.Property(item => item.ExpiryDate)
+                .HasColumnType("date");
+
+            entity.Property(item => item.PurchasePrice)
+                .HasPrecision(18, 2);
+
+            entity.Property(item => item.SellingPrice)
+                .HasPrecision(18, 2);
+
+            entity.Property(item => item.LineTotal)
+                .HasPrecision(18, 2);
+
+            entity.HasOne(item => item.Purchase)
+                .WithMany(purchase => purchase.Items)
+                .HasForeignKey(item => item.PurchaseId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(item => item.Medicine)
+                .WithMany()
+                .HasForeignKey(item => item.MedicineId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
     }
