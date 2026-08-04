@@ -1,18 +1,22 @@
 @page "/"
+@using Microsoft.EntityFrameworkCore
+@using PharmaCarePro.Domain.Entities
+@using PharmaCarePro.Web.Data
+@inject IServiceScopeFactory ScopeFactory
 
 <PageTitle>Dashboard | PharmaCare Pro</PageTitle>
 
 <div class="page-heading">
     <div>
-        <span class="eyebrow">MONDAY, 3 AUGUST 2026</span>
-        <h1>Good evening, Addin</h1>
-        <p>Here is the current overview of your pharmacy.</p>
+        <span class="eyebrow">@dashboardDateText</span>
+        <h1>@greetingText, Addin</h1>
+        <p>Here is the live operational overview of your pharmacy.</p>
     </div>
 
     <div class="heading-actions">
-        <a class="button button-secondary" href="medicines">
-            <span>＋</span>
-            Add medicine
+        <a class="button button-secondary" href="purchases">
+            <span>↓</span>
+            Receive stock
         </a>
 
         <a class="button button-primary" href="pos">
@@ -22,24 +26,41 @@
     </div>
 </div>
 
+@if (!string.IsNullOrWhiteSpace(loadError))
+{
+    <div class="form-status status-error">
+        @loadError
+    </div>
+}
+
 <section class="welcome-panel">
     <div class="welcome-copy">
-        <span class="welcome-kicker">PHARMACY WORKSPACE</span>
-        <h2>Everything your pharmacy needs, in one secure system.</h2>
+        <span class="welcome-kicker">LIVE PHARMACY WORKSPACE</span>
+
+        <h2>
+            Sales, purchases and inventory are connected in one system.
+        </h2>
+
         <p>
-            Manage medicine batches, expiry dates, purchases, prescriptions,
-            customer accounts and daily sales from one responsive dashboard.
+            Monitor daily revenue, customer dues, supplier balances,
+            stock levels and expiry risk using live Supabase data.
         </p>
 
         <div class="welcome-actions">
-            <a href="pos" class="button button-light">Open point of sale</a>
-            <a href="inventory" class="button button-ghost">Review inventory</a>
+            <a href="pos" class="button button-light">
+                Open point of sale
+            </a>
+
+            <a href="inventory" class="button button-ghost">
+                Review inventory
+            </a>
         </div>
     </div>
 
     <div class="welcome-visual" aria-hidden="true">
         <div class="visual-orbit orbit-one"></div>
         <div class="visual-orbit orbit-two"></div>
+
         <div class="medical-cross">
             <span></span>
             <span></span>
@@ -51,41 +72,79 @@
     <article class="metric-card">
         <div class="metric-card-top">
             <span class="metric-icon metric-green">৳</span>
-            <span class="metric-trend positive">Ready</span>
+
+            <span class="metric-trend positive">
+                Live
+            </span>
         </div>
+
         <span class="metric-label">Today's sales</span>
-        <strong class="metric-value">৳0.00</strong>
-        <small>No sales recorded yet</small>
+
+        <strong class="metric-value">
+            ৳@todaySalesValue.ToString("N2")
+        </strong>
+
+        <small>
+            ৳@todayPaidValue.ToString("N2") received today
+        </small>
     </article>
 
     <article class="metric-card">
         <div class="metric-card-top">
             <span class="metric-icon metric-blue">▣</span>
-            <span class="metric-trend neutral">Today</span>
+
+            <span class="metric-trend neutral">
+                Today
+            </span>
         </div>
+
         <span class="metric-label">Invoices</span>
-        <strong class="metric-value">0</strong>
-        <small>Sales invoices generated</small>
+
+        <strong class="metric-value">
+            @todayInvoiceCount
+        </strong>
+
+        <small>
+            @todayUnitsSold medicine units sold
+        </small>
     </article>
 
     <article class="metric-card">
         <div class="metric-card-top">
             <span class="metric-icon metric-amber">!</span>
-            <span class="metric-trend warning">Attention</span>
+
+            <span class="metric-trend
+                @(lowStockCount > 0 ? "warning" : "positive")">
+                @(lowStockCount > 0 ? "Attention" : "Healthy")
+            </span>
         </div>
+
         <span class="metric-label">Low stock</span>
-        <strong class="metric-value">0</strong>
-        <small>Items below reorder level</small>
+
+        <strong class="metric-value">
+            @lowStockCount
+        </strong>
+
+        <small>Medicines at or below reorder level</small>
     </article>
 
     <article class="metric-card">
         <div class="metric-card-top">
             <span class="metric-icon metric-red">⌛</span>
-            <span class="metric-trend neutral">90 days</span>
+
+            <span class="metric-trend
+                @(expiringSoonCount > 0 ? "warning" : "positive")">
+                90 days
+            </span>
         </div>
+
         <span class="metric-label">Expiring soon</span>
-        <strong class="metric-value">0</strong>
-        <small>Batches approaching expiry</small>
+
+        <strong class="metric-value">
+            @expiringSoonCount
+        </strong>
+
+        <small>Available batches approaching expiry</small>
     </article>
 </section>
 
@@ -94,13 +153,14 @@
         <div class="panel-heading">
             <div>
                 <h2>Quick actions</h2>
-                <p>Start common pharmacy tasks.</p>
+                <p>Start common pharmacy operations.</p>
             </div>
         </div>
 
         <div class="quick-action-grid">
             <a class="quick-action" href="pos">
                 <span class="quick-action-icon action-teal">▣</span>
+
                 <span>
                     <strong>New sale</strong>
                     <small>Open point of sale</small>
@@ -109,6 +169,7 @@
 
             <a class="quick-action" href="medicines">
                 <span class="quick-action-icon action-purple">✚</span>
+
                 <span>
                     <strong>Add medicine</strong>
                     <small>Create catalog item</small>
@@ -117,33 +178,37 @@
 
             <a class="quick-action" href="purchases">
                 <span class="quick-action-icon action-blue">↓</span>
+
                 <span>
-                    <strong>Record purchase</strong>
-                    <small>Receive supplier stock</small>
+                    <strong>Receive purchase</strong>
+                    <small>Add supplier stock</small>
                 </span>
             </a>
 
-            <a class="quick-action" href="prescriptions">
-                <span class="quick-action-icon action-orange">⌑</span>
+            <a class="quick-action" href="inventory">
+                <span class="quick-action-icon action-orange">▤</span>
+
                 <span>
-                    <strong>Prescription</strong>
-                    <small>Register and dispense</small>
+                    <strong>Inventory</strong>
+                    <small>Review batches and expiry</small>
                 </span>
             </a>
 
             <a class="quick-action" href="customers">
                 <span class="quick-action-icon action-pink">♙</span>
+
                 <span>
-                    <strong>Add customer</strong>
-                    <small>Create patient profile</small>
+                    <strong>Customers</strong>
+                    <small>Manage customer accounts</small>
                 </span>
             </a>
 
-            <a class="quick-action" href="reports">
-                <span class="quick-action-icon action-indigo">↗</span>
+            <a class="quick-action" href="suppliers">
+                <span class="quick-action-icon action-indigo">▱</span>
+
                 <span>
-                    <strong>View reports</strong>
-                    <small>Analyze performance</small>
+                    <strong>Suppliers</strong>
+                    <small>Manage supplier accounts</small>
                 </span>
             </a>
         </div>
@@ -153,8 +218,9 @@
         <div class="panel-heading">
             <div>
                 <h2>Inventory health</h2>
-                <p>Live stock status will appear here.</p>
+                <p>Live medicine availability status.</p>
             </div>
+
             <a href="inventory">View inventory</a>
         </div>
 
@@ -162,39 +228,60 @@
             <div class="health-row">
                 <div class="health-label">
                     <span>Healthy stock</span>
-                    <strong>0 items</strong>
+                    <strong>@healthyStockCount medicines</strong>
                 </div>
+
                 <div class="progress-track">
-                    <span class="progress-value healthy-progress"></span>
+                    <span class="progress-value healthy-progress"
+                          style="@($"width: {HealthyPercent}%")">
+                    </span>
                 </div>
             </div>
 
             <div class="health-row">
                 <div class="health-label">
                     <span>Low stock</span>
-                    <strong>0 items</strong>
+                    <strong>@lowStockCount medicines</strong>
                 </div>
+
                 <div class="progress-track">
-                    <span class="progress-value low-progress"></span>
+                    <span class="progress-value low-progress"
+                          style="@($"width: {LowStockPercent}%")">
+                    </span>
                 </div>
             </div>
 
             <div class="health-row">
                 <div class="health-label">
                     <span>Out of stock</span>
-                    <strong>0 items</strong>
+                    <strong>@outOfStockCount medicines</strong>
                 </div>
+
                 <div class="progress-track">
-                    <span class="progress-value empty-progress"></span>
+                    <span class="progress-value empty-progress"
+                          style="@($"width: {OutOfStockPercent}%")">
+                    </span>
                 </div>
             </div>
         </div>
 
         <div class="inventory-empty">
             <span class="empty-icon">▤</span>
-            <strong>Your inventory is ready for setup</strong>
-            <p>Add your first medicine and purchase batch to begin tracking stock.</p>
-            <a href="medicines">Add first medicine</a>
+
+            <strong>
+                @totalAvailableUnits available units
+            </strong>
+
+            <p>
+                Across @activeBatchCount active
+                @(activeBatchCount == 1 ? "batch" : "batches")
+                and @inventoryMedicineCount active
+                @(inventoryMedicineCount == 1
+                    ? "medicine"
+                    : "medicines").
+            </p>
+
+            <a href="inventory">Review batch inventory</a>
         </div>
     </section>
 </div>
@@ -206,7 +293,8 @@
                 <h2>Recent sales</h2>
                 <p>Your latest pharmacy transactions.</p>
             </div>
-            <a href="reports">View all</a>
+
+            <a href="pos">New sale</a>
         </div>
 
         <div class="responsive-table">
@@ -220,13 +308,64 @@
                         <th>Status</th>
                     </tr>
                 </thead>
+
                 <tbody>
-                    <tr class="empty-table-row">
-                        <td colspan="5">
-                            <span>No sales have been recorded yet.</span>
-                            <a href="pos">Create the first sale</a>
-                        </td>
-                    </tr>
+                    @if (isLoading)
+                    {
+                        <tr class="empty-table-row">
+                            <td colspan="5">
+                                <span>Loading recent sales...</span>
+                            </td>
+                        </tr>
+                    }
+                    else if (recentSales.Count == 0)
+                    {
+                        <tr class="empty-table-row">
+                            <td colspan="5">
+                                <span>No sales have been recorded yet.</span>
+                                <a href="pos">Create the first sale</a>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var sale in recentSales)
+                        {
+                            <tr @key="sale.Id">
+                                <td>
+                                    <strong>@sale.InvoiceNumber</strong>
+                                    <small>
+                                        @(sale.SoldAtUtc
+                                            .ToLocalTime()
+                                            .ToString("dd MMM, hh:mm tt"))
+                                    </small>
+                                </td>
+
+                                <td>
+                                    @(string.IsNullOrWhiteSpace(
+                                        sale.CustomerName)
+                                        ? "Walk-in customer"
+                                        : sale.CustomerName)
+                                </td>
+
+                                <td>
+                                    @FormatPaymentMethod(
+                                        sale.PaymentMethod)
+                                </td>
+
+                                <td>
+                                    ৳@sale.GrandTotal.ToString("N2")
+                                </td>
+
+                                <td>
+                                    <span class="metric-trend
+                                        @GetSaleStatusClass(sale.Status)">
+                                        @FormatSaleStatus(sale.Status)
+                                    </span>
+                                </td>
+                            </tr>
+                        }
+                    }
                 </tbody>
             </table>
         </div>
@@ -235,44 +374,317 @@
     <section class="dashboard-panel alert-panel">
         <div class="panel-heading">
             <div>
-                <h2>Setup progress</h2>
-                <p>Prepare the pharmacy for daily use.</p>
+                <h2>Business snapshot</h2>
+                <p>Live account and operational totals.</p>
             </div>
-            <span class="progress-count">2 of 6</span>
+
+            <span class="progress-count">Live</span>
         </div>
 
         <div class="setup-list">
             <div class="setup-item complete">
-                <span class="setup-check">✓</span>
+                <span class="setup-check">৳</span>
+
                 <div>
-                    <strong>Create the .NET application</strong>
-                    <small>Blazor solution is running.</small>
+                    <strong>
+                        ৳@customerReceivable.ToString("N2")
+                        customer receivable
+                    </strong>
+
+                    <small>
+                        Outstanding balances from
+                        @activeCustomerCount active customers.
+                    </small>
+                </div>
+            </div>
+
+            <div class="setup-item complete">
+                <span class="setup-check">↓</span>
+
+                <div>
+                    <strong>
+                        ৳@supplierPayable.ToString("N2")
+                        supplier payable
+                    </strong>
+
+                    <small>
+                        Current balances across
+                        @activeSupplierCount active suppliers.
+                    </small>
+                </div>
+            </div>
+
+            <div class="setup-item complete">
+                <span class="setup-check">Rx</span>
+
+                <div>
+                    <strong>
+                        @inventoryMedicineCount active medicines
+                    </strong>
+
+                    <small>
+                        @totalAvailableUnits sellable units currently available.
+                    </small>
                 </div>
             </div>
 
             <div class="setup-item complete">
                 <span class="setup-check">✓</span>
-                <div>
-                    <strong>Connect Supabase</strong>
-                    <small>PostgreSQL Identity tables are ready.</small>
-                </div>
-            </div>
 
-            <div class="setup-item">
-                <span class="setup-check">3</span>
                 <div>
-                    <strong>Configure pharmacy profile</strong>
-                    <small>Add business and branch information.</small>
-                </div>
-            </div>
+                    <strong>Core operations connected</strong>
 
-            <div class="setup-item">
-                <span class="setup-check">4</span>
-                <div>
-                    <strong>Add medicines and suppliers</strong>
-                    <small>Create the initial product catalog.</small>
+                    <small>
+                        Medicines, purchases, inventory, sales,
+                        customers and suppliers are live.
+                    </small>
                 </div>
             </div>
         </div>
     </section>
 </div>
+
+@code {
+    private readonly List<Sale> recentSales = [];
+
+    private string dashboardDateText =
+        DateTime.Now.ToString("dddd, d MMMM yyyy")
+            .ToUpperInvariant();
+
+    private string greetingText = "Welcome";
+
+    private string? loadError;
+
+    private decimal todaySalesValue;
+    private decimal todayPaidValue;
+    private decimal customerReceivable;
+    private decimal supplierPayable;
+
+    private int todayInvoiceCount;
+    private int todayUnitsSold;
+
+    private int inventoryMedicineCount;
+    private int healthyStockCount;
+    private int lowStockCount;
+    private int outOfStockCount;
+    private int expiringSoonCount;
+
+    private int totalAvailableUnits;
+    private int activeBatchCount;
+    private int activeCustomerCount;
+    private int activeSupplierCount;
+
+    private bool isLoading = true;
+
+    private int HealthyPercent =>
+        inventoryMedicineCount == 0
+            ? 0
+            : (int)Math.Round(
+                healthyStockCount * 100d /
+                inventoryMedicineCount);
+
+    private int LowStockPercent =>
+        inventoryMedicineCount == 0
+            ? 0
+            : (int)Math.Round(
+                lowStockCount * 100d /
+                inventoryMedicineCount);
+
+    private int OutOfStockPercent =>
+        inventoryMedicineCount == 0
+            ? 0
+            : (int)Math.Round(
+                outOfStockCount * 100d /
+                inventoryMedicineCount);
+
+    protected override async Task OnInitializedAsync()
+    {
+        SetGreeting();
+
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+
+            var database = scope.ServiceProvider
+                .GetRequiredService<ApplicationDbContext>();
+
+            var localToday = DateTime.Today;
+
+            var todayStartUtc =
+                localToday.ToUniversalTime();
+
+            var tomorrowStartUtc =
+                localToday.AddDays(1).ToUniversalTime();
+
+            var todaySalesQuery = database.Sales
+                .AsNoTracking()
+                .Where(sale =>
+                    sale.SoldAtUtc >= todayStartUtc &&
+                    sale.SoldAtUtc < tomorrowStartUtc &&
+                    sale.Status != SaleStatus.Cancelled &&
+                    sale.Status != SaleStatus.Refunded);
+
+            todayInvoiceCount =
+                await todaySalesQuery.CountAsync();
+
+            todaySalesValue =
+                await todaySalesQuery.SumAsync(
+                    sale => (decimal?)sale.GrandTotal) ?? 0;
+
+            todayPaidValue =
+                await todaySalesQuery.SumAsync(
+                    sale => (decimal?)sale.PaidAmount) ?? 0;
+
+            todayUnitsSold =
+                await database.SaleItems
+                    .AsNoTracking()
+                    .Where(item =>
+                        item.Sale != null &&
+                        item.Sale.SoldAtUtc >= todayStartUtc &&
+                        item.Sale.SoldAtUtc < tomorrowStartUtc &&
+                        item.Sale.Status != SaleStatus.Cancelled &&
+                        item.Sale.Status != SaleStatus.Refunded)
+                    .SumAsync(item => (int?)item.Quantity) ?? 0;
+
+            recentSales.AddRange(
+                await database.Sales
+                    .AsNoTracking()
+                    .OrderByDescending(sale => sale.SoldAtUtc)
+                    .Take(8)
+                    .ToListAsync());
+
+            var medicines = await database.Medicines
+                .AsNoTracking()
+                .Where(medicine => medicine.IsActive)
+                .Include(medicine => medicine.Batches)
+                .OrderBy(medicine => medicine.BrandName)
+                .ToListAsync();
+
+            inventoryMedicineCount = medicines.Count;
+
+            var today = DateTime.Today;
+            var expiryLimit = today.AddDays(90);
+
+            foreach (var medicine in medicines)
+            {
+                var availableStock = medicine.Batches
+                    .Where(batch =>
+                        batch.AvailableQuantity > 0 &&
+                        !batch.IsQuarantined &&
+                        batch.ExpiryDate.Date >= today)
+                    .Sum(batch => batch.AvailableQuantity);
+
+                totalAvailableUnits += availableStock;
+
+                if (availableStock == 0)
+                {
+                    outOfStockCount++;
+                }
+                else if (availableStock <= medicine.ReorderLevel)
+                {
+                    lowStockCount++;
+                }
+                else
+                {
+                    healthyStockCount++;
+                }
+            }
+
+            activeBatchCount = medicines
+                .SelectMany(medicine => medicine.Batches)
+                .Count(batch =>
+                    batch.AvailableQuantity > 0 &&
+                    !batch.IsQuarantined &&
+                    batch.ExpiryDate.Date >= today);
+
+            expiringSoonCount = medicines
+                .SelectMany(medicine => medicine.Batches)
+                .Count(batch =>
+                    batch.AvailableQuantity > 0 &&
+                    !batch.IsQuarantined &&
+                    batch.ExpiryDate.Date >= today &&
+                    batch.ExpiryDate.Date <= expiryLimit);
+
+            activeCustomerCount =
+                await database.Customers
+                    .AsNoTracking()
+                    .CountAsync(customer => customer.IsActive);
+
+            customerReceivable =
+                await database.Customers
+                    .AsNoTracking()
+                    .SumAsync(customer =>
+                        (decimal?)customer.CurrentBalance) ?? 0;
+
+            activeSupplierCount =
+                await database.Suppliers
+                    .AsNoTracking()
+                    .CountAsync(supplier => supplier.IsActive);
+
+            supplierPayable =
+                await database.Suppliers
+                    .AsNoTracking()
+                    .SumAsync(supplier =>
+                        (decimal?)supplier.CurrentBalance) ?? 0;
+        }
+        catch (Exception exception)
+        {
+            loadError =
+                "The live dashboard could not be loaded: " +
+                exception.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void SetGreeting()
+    {
+        greetingText = DateTime.Now.Hour switch
+        {
+            < 12 => "Good morning",
+            < 17 => "Good afternoon",
+            < 22 => "Good evening",
+            _ => "Good night"
+        };
+    }
+
+    private static string FormatPaymentMethod(
+        PaymentMethod paymentMethod)
+    {
+        return paymentMethod switch
+        {
+            PaymentMethod.MobileBanking =>
+                "Mobile banking",
+            PaymentMethod.BankTransfer =>
+                "Bank transfer",
+            _ => paymentMethod.ToString()
+        };
+    }
+
+    private static string FormatSaleStatus(
+        SaleStatus status)
+    {
+        return status switch
+        {
+            SaleStatus.PartiallyPaid =>
+                "Partially paid",
+            _ => status.ToString()
+        };
+    }
+
+    private static string GetSaleStatusClass(
+        SaleStatus status)
+    {
+        return status switch
+        {
+            SaleStatus.Completed => "positive",
+            SaleStatus.Due => "warning",
+            SaleStatus.PartiallyPaid => "neutral",
+            SaleStatus.Cancelled => "warning",
+            SaleStatus.Refunded => "neutral",
+            _ => "neutral"
+        };
+    }
+}
