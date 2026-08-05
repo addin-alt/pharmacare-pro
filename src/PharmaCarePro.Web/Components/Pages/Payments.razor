@@ -1,0 +1,1073 @@
+@page "/payments"
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using PharmaCarePro.Domain.Entities
+@using PharmaCarePro.Web.Data
+@using PharmaCarePro.Web.Services.Payments
+
+@inject IServiceScopeFactory ScopeFactory
+@inject AccountPaymentService PaymentService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Payments | PharmaCare Pro</PageTitle>
+
+<div class="page-heading module-heading payment-page-heading">
+    <div>
+        <span class="eyebrow">ACCOUNT SETTLEMENT</span>
+        <h1>Payments center</h1>
+        <p>
+            Receive customer payments, settle supplier accounts and
+            maintain a complete payment history.
+        </p>
+    </div>
+
+    <a class="button button-secondary" href="">
+        Return to dashboard
+    </a>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <div class="form-status payment-status
+         @(statusIsError ? "status-error" : "status-success")">
+        @statusMessage
+    </div>
+}
+
+<section class="payment-summary-grid">
+    <article class="payment-summary-card payment-summary-receivable">
+        <span>Customer receivable</span>
+        <strong>৳@CustomerReceivable.ToString("N2")</strong>
+        <small>
+            @customers.Count(customer => customer.CurrentBalance > 0)
+            customer accounts due
+        </small>
+    </article>
+
+    <article class="payment-summary-card payment-summary-payable">
+        <span>Supplier payable</span>
+        <strong>৳@SupplierPayable.ToString("N2")</strong>
+        <small>
+            @suppliers.Count(supplier => supplier.CurrentBalance > 0)
+            supplier accounts due
+        </small>
+    </article>
+
+    <article class="payment-summary-card payment-summary-incoming">
+        <span>Received today</span>
+        <strong>৳@CustomerReceivedToday.ToString("N2")</strong>
+        <small>Customer account collections</small>
+    </article>
+
+    <article class="payment-summary-card payment-summary-outgoing">
+        <span>Paid today</span>
+        <strong>৳@SupplierPaidToday.ToString("N2")</strong>
+        <small>Supplier account settlements</small>
+    </article>
+</section>
+
+<div class="payment-ledger-switcher"
+     role="tablist"
+     aria-label="Payment account type">
+    <button type="button"
+            role="tab"
+            aria-selected="@(activeLedger == LedgerView.Customers)"
+            class="payment-ledger-tab
+                @(activeLedger == LedgerView.Customers
+                    ? "is-active"
+                    : string.Empty)"
+            @onclick="() => SelectLedger(LedgerView.Customers)">
+        <span class="payment-tab-icon">↓</span>
+        <span>
+            <strong>Customer receipts</strong>
+            <small>Collect outstanding balances</small>
+        </span>
+    </button>
+
+    <button type="button"
+            role="tab"
+            aria-selected="@(activeLedger == LedgerView.Suppliers)"
+            class="payment-ledger-tab
+                @(activeLedger == LedgerView.Suppliers
+                    ? "is-active"
+                    : string.Empty)"
+            @onclick="() => SelectLedger(LedgerView.Suppliers)">
+        <span class="payment-tab-icon">↑</span>
+        <span>
+            <strong>Supplier payments</strong>
+            <small>Settle outstanding payables</small>
+        </span>
+    </button>
+</div>
+
+@if (isLoading)
+{
+    <section class="dashboard-panel payment-loading-panel">
+        <strong>Loading account ledgers...</strong>
+        <p>Connecting to the pharmacy payment records.</p>
+    </section>
+}
+else if (activeLedger == LedgerView.Customers)
+{
+    <div class="payment-workspace">
+        <section class="dashboard-panel payment-entry-panel">
+            <div class="panel-heading">
+                <div>
+                    <span class="payment-panel-kicker">
+                        MONEY RECEIVED
+                    </span>
+                    <h2>Record customer payment</h2>
+                    <p>
+                        Payments are applied to the oldest unpaid sales
+                        first.
+                    </p>
+                </div>
+
+                <span class="payment-direction-badge payment-incoming-badge">
+                    Customer → Pharmacy
+                </span>
+            </div>
+
+            @if (!CustomersWithBalance.Any())
+            {
+                <div class="payment-settled-state">
+                    <span>✓</span>
+                    <strong>All customer accounts are settled</strong>
+                    <p>
+                        There are currently no outstanding customer
+                        balances to collect.
+                    </p>
+                </div>
+            }
+            else
+            {
+                <EditForm Model="customerForm"
+                          FormName="customer-payment"
+                          OnValidSubmit="RecordCustomerPaymentAsync">
+                    <DataAnnotationsValidator />
+
+                    <div class="payment-form-grid">
+                        <div class="form-field payment-account-field">
+                            <label>Customer account</label>
+
+                            <InputSelect
+                                @bind-Value="customerForm.CustomerId">
+                                @foreach (var customer in
+                                    CustomersWithBalance)
+                                {
+                                    <option value="@customer.Id">
+                                        @customer.CustomerCode ·
+                                        @customer.Name ·
+                                        ৳@customer.CurrentBalance.ToString("N2")
+                                    </option>
+                                }
+                            </InputSelect>
+                        </div>
+
+                        <div class="form-field">
+                            <label>Payment amount</label>
+
+                            <div class="payment-money-input">
+                                <span>৳</span>
+
+                                <InputNumber
+                                    @bind-Value="customerForm.Amount"
+                                    min="0.01"
+                                    step="0.01"
+                                    placeholder="0.00" />
+                            </div>
+
+                            <ValidationMessage
+                                For="() => customerForm.Amount" />
+                        </div>
+
+                        <div class="form-field">
+                            <label>Payment method</label>
+
+                            <InputSelect
+                                @bind-Value="customerForm.PaymentMethod">
+                                @foreach (var method in PaymentMethods)
+                                {
+                                    <option value="@method">
+                                        @FormatPaymentMethod(method)
+                                    </option>
+                                }
+                            </InputSelect>
+                        </div>
+
+                        <div class="form-field">
+                            <label>Reference number</label>
+
+                            <InputText
+                                @bind-Value="customerForm.ReferenceNumber"
+                                placeholder="Optional transaction reference" />
+
+                            <ValidationMessage
+                                For="() =>
+                                    customerForm.ReferenceNumber" />
+                        </div>
+
+                        <div class="form-field payment-notes-field">
+                            <label>Payment notes</label>
+
+                            <InputTextArea
+                                @bind-Value="customerForm.Notes"
+                                rows="3"
+                                placeholder="Optional receipt or account notes" />
+
+                            <ValidationMessage
+                                For="() => customerForm.Notes" />
+                        </div>
+                    </div>
+
+                    @if (SelectedCustomer is not null)
+                    {
+                        <div class="payment-balance-preview">
+                            <div>
+                                <span>Current account balance</span>
+                                <strong>
+                                    ৳@(SelectedCustomer.CurrentBalance.ToString("N2"))
+                                </strong>
+                            </div>
+
+                            <span class="payment-preview-arrow">→</span>
+
+                            <div>
+                                <span>Balance after payment</span>
+                                <strong>
+                                    ৳@CustomerBalanceAfter.ToString("N2")
+                                </strong>
+                            </div>
+                        </div>
+                    }
+
+                    <button type="submit"
+                            class="button button-primary
+                                payment-submit-button"
+                            disabled="@isSaving">
+                        @(isSaving
+                            ? "Recording payment..."
+                            : "Receive customer payment")
+                    </button>
+                </EditForm>
+            }
+        </section>
+
+        <section class="dashboard-panel payment-documents-panel">
+            <div class="panel-heading">
+                <div>
+                    <span class="payment-panel-kicker">
+                        AUTO ALLOCATION
+                    </span>
+                    <h2>Outstanding sales</h2>
+                    <p>
+                        Oldest invoices receive the payment first.
+                    </p>
+                </div>
+            </div>
+
+            @if (SelectedCustomer is null)
+            {
+                <div class="payment-empty-state">
+                    <strong>No customer selected</strong>
+                    <p>Select a customer account to view unpaid sales.</p>
+                </div>
+            }
+            else if (!OutstandingCustomerSales.Any())
+            {
+                <div class="payment-empty-state">
+                    <strong>No unpaid sales found</strong>
+                    <p>
+                        The remaining balance is an account opening
+                        balance or manual balance.
+                    </p>
+                </div>
+            }
+            else
+            {
+                <div class="payment-document-list">
+                    @foreach (var sale in OutstandingCustomerSales)
+                    {
+                        <article class="payment-document-row"
+                                 @key="sale.Id">
+                            <span class="payment-document-icon">INV</span>
+
+                            <div class="payment-document-info">
+                                <strong>@sale.InvoiceNumber</strong>
+                                <small>
+                                    @(sale.SoldAtUtc
+        .ToLocalTime()
+        .ToString("dd MMM yyyy, hh:mm tt"))
+                                </small>
+                            </div>
+
+                            <div class="payment-document-value">
+                                <span>Outstanding</span>
+                                <strong>৳@sale.DueAmount.ToString("N2")</strong>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+        </section>
+    </div>
+
+    <section class="dashboard-panel payment-history-panel">
+        <div class="panel-heading">
+            <div>
+                <span class="payment-panel-kicker">
+                    RECEIPT LEDGER
+                </span>
+                <h2>Recent customer payments</h2>
+                <p>
+                    Complete history of customer account collections.
+                </p>
+            </div>
+        </div>
+
+        @if (!customerPayments.Any())
+        {
+            <div class="payment-empty-state">
+                <strong>No customer payments recorded</strong>
+                <p>The first customer receipt will appear here.</p>
+            </div>
+        }
+        else
+        {
+            <div class="payment-history-table-wrap">
+                <table class="payment-history-table">
+                    <thead>
+                        <tr>
+                            <th>Receipt</th>
+                            <th>Customer</th>
+                            <th>Method</th>
+                            <th>Allocation</th>
+                            <th>Received</th>
+                            <th class="payment-number-column">Amount</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @foreach (var payment in customerPayments)
+                        {
+                            <tr @key="payment.Id">
+                                <td>
+                                    <strong>@payment.ReceiptNumber</strong>
+                                    <small>
+                                        @(payment.ReceivedAtUtc
+        .ToLocalTime()
+        .ToString("dd MMM yyyy, hh:mm tt"))
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <strong>@payment.Customer.Name</strong>
+                                    <small>
+                                        @payment.Customer.CustomerCode
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <span class="payment-method-pill">
+                                        @FormatPaymentMethod(
+                                            payment.PaymentMethod)
+                                    </span>
+                                </td>
+
+                                <td>
+                                    <strong>
+                                        @payment.Allocations.Count
+                                        invoice@(payment.Allocations.Count == 1
+                                            ? string.Empty
+                                            : "s")
+                                    </strong>
+                                    <small>
+                                        Balance:
+                                        ৳@payment.BalanceAfter.ToString("N2")
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <strong>@payment.RecordedBy</strong>
+                                    <small>Recorded by</small>
+                                </td>
+
+                                <td class="payment-number-column">
+                                    <strong class="payment-positive-value">
+                                        +৳@payment.Amount.ToString("N2")
+                                    </strong>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+else
+{
+    <div class="payment-workspace">
+        <section class="dashboard-panel payment-entry-panel">
+            <div class="panel-heading">
+                <div>
+                    <span class="payment-panel-kicker">
+                        MONEY PAID
+                    </span>
+                    <h2>Record supplier payment</h2>
+                    <p>
+                        Payments are applied to the oldest unpaid
+                        purchases first.
+                    </p>
+                </div>
+
+                <span class="payment-direction-badge payment-outgoing-badge">
+                    Pharmacy → Supplier
+                </span>
+            </div>
+
+            @if (!SuppliersWithBalance.Any())
+            {
+                <div class="payment-settled-state">
+                    <span>✓</span>
+                    <strong>All supplier accounts are settled</strong>
+                    <p>
+                        There are currently no outstanding supplier
+                        balances to pay.
+                    </p>
+                </div>
+            }
+            else
+            {
+                <EditForm Model="supplierForm"
+                          FormName="supplier-payment"
+                          OnValidSubmit="RecordSupplierPaymentAsync">
+                    <DataAnnotationsValidator />
+
+                    <div class="payment-form-grid">
+                        <div class="form-field payment-account-field">
+                            <label>Supplier account</label>
+
+                            <InputSelect
+                                @bind-Value="supplierForm.SupplierId">
+                                @foreach (var supplier in
+                                    SuppliersWithBalance)
+                                {
+                                    <option value="@supplier.Id">
+                                        @supplier.SupplierCode ·
+                                        @supplier.Name ·
+                                        ৳@supplier.CurrentBalance.ToString("N2")
+                                    </option>
+                                }
+                            </InputSelect>
+                        </div>
+
+                        <div class="form-field">
+                            <label>Payment amount</label>
+
+                            <div class="payment-money-input">
+                                <span>৳</span>
+
+                                <InputNumber
+                                    @bind-Value="supplierForm.Amount"
+                                    min="0.01"
+                                    step="0.01"
+                                    placeholder="0.00" />
+                            </div>
+
+                            <ValidationMessage
+                                For="() => supplierForm.Amount" />
+                        </div>
+
+                        <div class="form-field">
+                            <label>Payment method</label>
+
+                            <InputSelect
+                                @bind-Value="supplierForm.PaymentMethod">
+                                @foreach (var method in PaymentMethods)
+                                {
+                                    <option value="@method">
+                                        @FormatPaymentMethod(method)
+                                    </option>
+                                }
+                            </InputSelect>
+                        </div>
+
+                        <div class="form-field">
+                            <label>Reference number</label>
+
+                            <InputText
+                                @bind-Value="supplierForm.ReferenceNumber"
+                                placeholder="Optional transaction reference" />
+
+                            <ValidationMessage
+                                For="() =>
+                                    supplierForm.ReferenceNumber" />
+                        </div>
+
+                        <div class="form-field payment-notes-field">
+                            <label>Payment notes</label>
+
+                            <InputTextArea
+                                @bind-Value="supplierForm.Notes"
+                                rows="3"
+                                placeholder="Optional voucher or account notes" />
+
+                            <ValidationMessage
+                                For="() => supplierForm.Notes" />
+                        </div>
+                    </div>
+
+                    @if (SelectedSupplier is not null)
+                    {
+                        <div class="payment-balance-preview">
+                            <div>
+                                <span>Current account balance</span>
+                                <strong>
+                                    ৳@(SelectedSupplier.CurrentBalance.ToString("N2"))
+                                </strong>
+                            </div>
+
+                            <span class="payment-preview-arrow">→</span>
+
+                            <div>
+                                <span>Balance after payment</span>
+                                <strong>
+                                    ৳@SupplierBalanceAfter.ToString("N2")
+                                </strong>
+                            </div>
+                        </div>
+                    }
+
+                    <button type="submit"
+                            class="button button-primary
+                                payment-submit-button
+                                payment-supplier-submit"
+                            disabled="@isSaving">
+                        @(isSaving
+                            ? "Recording payment..."
+                            : "Pay supplier account")
+                    </button>
+                </EditForm>
+            }
+        </section>
+
+        <section class="dashboard-panel payment-documents-panel">
+            <div class="panel-heading">
+                <div>
+                    <span class="payment-panel-kicker">
+                        AUTO ALLOCATION
+                    </span>
+                    <h2>Outstanding purchases</h2>
+                    <p>
+                        Oldest purchase dues receive the payment first.
+                    </p>
+                </div>
+            </div>
+
+            @if (SelectedSupplier is null)
+            {
+                <div class="payment-empty-state">
+                    <strong>No supplier selected</strong>
+                    <p>Select a supplier to view unpaid purchases.</p>
+                </div>
+            }
+            else if (!OutstandingSupplierPurchases.Any())
+            {
+                <div class="payment-empty-state">
+                    <strong>No unpaid purchases found</strong>
+                    <p>
+                        The remaining balance is an opening or manually
+                        recorded supplier balance.
+                    </p>
+                </div>
+            }
+            else
+            {
+                <div class="payment-document-list">
+                    @foreach (var purchase in
+                        OutstandingSupplierPurchases)
+                    {
+                        <article class="payment-document-row"
+                                 @key="purchase.Id">
+                            <span class="payment-document-icon">PUR</span>
+
+                            <div class="payment-document-info">
+                                <strong>@purchase.PurchaseNumber</strong>
+                                <small>
+                                    @(purchase.PurchaseDateUtc
+        .ToLocalTime()
+        .ToString("dd MMM yyyy, hh:mm tt"))
+                                </small>
+                            </div>
+
+                            <div class="payment-document-value">
+                                <span>Outstanding</span>
+                                <strong>
+                                    ৳@purchase.DueAmount.ToString("N2")
+                                </strong>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+        </section>
+    </div>
+
+    <section class="dashboard-panel payment-history-panel">
+        <div class="panel-heading">
+            <div>
+                <span class="payment-panel-kicker">
+                    PAYMENT LEDGER
+                </span>
+                <h2>Recent supplier payments</h2>
+                <p>
+                    Complete history of supplier account settlements.
+                </p>
+            </div>
+        </div>
+
+        @if (!supplierPayments.Any())
+        {
+            <div class="payment-empty-state">
+                <strong>No supplier payments recorded</strong>
+                <p>The first supplier payment will appear here.</p>
+            </div>
+        }
+        else
+        {
+            <div class="payment-history-table-wrap">
+                <table class="payment-history-table">
+                    <thead>
+                        <tr>
+                            <th>Payment</th>
+                            <th>Supplier</th>
+                            <th>Method</th>
+                            <th>Allocation</th>
+                            <th>Recorded</th>
+                            <th class="payment-number-column">Amount</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @foreach (var payment in supplierPayments)
+                        {
+                            <tr @key="payment.Id">
+                                <td>
+                                    <strong>@payment.PaymentNumber</strong>
+                                    <small>
+                                        @(payment.PaidAtUtc
+        .ToLocalTime()
+        .ToString("dd MMM yyyy, hh:mm tt"))
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <strong>@payment.Supplier.Name</strong>
+                                    <small>
+                                        @payment.Supplier.SupplierCode
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <span class="payment-method-pill">
+                                        @FormatPaymentMethod(
+                                            payment.PaymentMethod)
+                                    </span>
+                                </td>
+
+                                <td>
+                                    <strong>
+                                        @payment.Allocations.Count
+                                        purchase@(payment.Allocations.Count == 1
+                                            ? string.Empty
+                                            : "s")
+                                    </strong>
+                                    <small>
+                                        Balance:
+                                        ৳@payment.BalanceAfter.ToString("N2")
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <strong>@payment.RecordedBy</strong>
+                                    <small>Recorded by</small>
+                                </td>
+
+                                <td class="payment-number-column">
+                                    <strong class="payment-negative-value">
+                                        −৳@payment.Amount.ToString("N2")
+                                    </strong>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+
+@code {
+    private static readonly PaymentMethod[] PaymentMethods =
+    [
+        PaymentMethod.Cash,
+        PaymentMethod.Card,
+        PaymentMethod.MobileBanking,
+        PaymentMethod.BankTransfer
+    ];
+
+    private List<Customer> customers = [];
+    private List<Supplier> suppliers = [];
+    private List<Sale> outstandingSales = [];
+    private List<Purchase> outstandingPurchases = [];
+    private List<CustomerPayment> customerPayments = [];
+    private List<SupplierPayment> supplierPayments = [];
+
+    private CustomerPaymentForm customerForm = new();
+    private SupplierPaymentForm supplierForm = new();
+
+    private LedgerView activeLedger = LedgerView.Customers;
+
+    private string? statusMessage;
+    private bool statusIsError;
+    private bool isLoading = true;
+    private bool isSaving;
+
+    private IEnumerable<Customer> CustomersWithBalance =>
+        customers
+            .Where(customer => customer.CurrentBalance > 0)
+            .OrderByDescending(customer => customer.CurrentBalance)
+            .ThenBy(customer => customer.Name);
+
+    private IEnumerable<Supplier> SuppliersWithBalance =>
+        suppliers
+            .Where(supplier => supplier.CurrentBalance > 0)
+            .OrderByDescending(supplier => supplier.CurrentBalance)
+            .ThenBy(supplier => supplier.Name);
+
+    private Customer? SelectedCustomer =>
+        customers.FirstOrDefault(customer =>
+            customer.Id == customerForm.CustomerId);
+
+    private Supplier? SelectedSupplier =>
+        suppliers.FirstOrDefault(supplier =>
+            supplier.Id == supplierForm.SupplierId);
+
+    private IEnumerable<Sale> OutstandingCustomerSales =>
+        outstandingSales
+            .Where(sale =>
+                sale.CustomerId == customerForm.CustomerId)
+            .OrderBy(sale => sale.SoldAtUtc)
+            .Take(8);
+
+    private IEnumerable<Purchase> OutstandingSupplierPurchases =>
+        outstandingPurchases
+            .Where(purchase =>
+                purchase.SupplierId == supplierForm.SupplierId)
+            .OrderBy(purchase => purchase.PurchaseDateUtc)
+            .Take(8);
+
+    private decimal CustomerReceivable =>
+        customers.Sum(customer => customer.CurrentBalance);
+
+    private decimal SupplierPayable =>
+        suppliers.Sum(supplier => supplier.CurrentBalance);
+
+    private decimal CustomerReceivedToday =>
+        customerPayments
+            .Where(payment =>
+                payment.ReceivedAtUtc.ToLocalTime().Date ==
+                DateTime.Now.Date)
+            .Sum(payment => payment.Amount);
+
+    private decimal SupplierPaidToday =>
+        supplierPayments
+            .Where(payment =>
+                payment.PaidAtUtc.ToLocalTime().Date ==
+                DateTime.Now.Date)
+            .Sum(payment => payment.Amount);
+
+    private decimal CustomerBalanceAfter =>
+        Math.Max(
+            0,
+            (SelectedCustomer?.CurrentBalance ?? 0) -
+            Math.Max(0, customerForm.Amount));
+
+    private decimal SupplierBalanceAfter =>
+        Math.Max(
+            0,
+            (SelectedSupplier?.CurrentBalance ?? 0) -
+            Math.Max(0, supplierForm.Amount));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        isLoading = true;
+
+        using var scope = ScopeFactory.CreateScope();
+
+        var database =
+            scope.ServiceProvider
+                .GetRequiredService<ApplicationDbContext>();
+
+        customers =
+            await database.Customers
+                .AsNoTracking()
+                .OrderBy(customer => customer.Name)
+                .ToListAsync();
+
+        suppliers =
+            await database.Suppliers
+                .AsNoTracking()
+                .OrderBy(supplier => supplier.Name)
+                .ToListAsync();
+
+        outstandingSales =
+            await database.Sales
+                .AsNoTracking()
+                .Where(sale =>
+                    sale.CustomerId != null &&
+                    sale.DueAmount > 0 &&
+                    sale.Status != SaleStatus.Cancelled &&
+                    sale.Status != SaleStatus.Refunded)
+                .OrderBy(sale => sale.SoldAtUtc)
+                .ToListAsync();
+
+        outstandingPurchases =
+            await database.Purchases
+                .AsNoTracking()
+                .Where(purchase =>
+                    purchase.DueAmount > 0 &&
+                    purchase.Status == PurchaseStatus.Received)
+                .OrderBy(purchase => purchase.PurchaseDateUtc)
+                .ToListAsync();
+
+        customerPayments =
+            await database.CustomerPayments
+                .AsNoTracking()
+                .Include(payment => payment.Customer)
+                .Include(payment => payment.Allocations)
+                .OrderByDescending(payment =>
+                    payment.ReceivedAtUtc)
+                .Take(30)
+                .ToListAsync();
+
+        supplierPayments =
+            await database.SupplierPayments
+                .AsNoTracking()
+                .Include(payment => payment.Supplier)
+                .Include(payment => payment.Allocations)
+                .OrderByDescending(payment =>
+                    payment.PaidAtUtc)
+                .Take(30)
+                .ToListAsync();
+
+        InitializeFormSelections();
+
+        isLoading = false;
+    }
+
+    private void InitializeFormSelections()
+    {
+        if (!CustomersWithBalance.Any(customer =>
+            customer.Id == customerForm.CustomerId))
+        {
+            customerForm.CustomerId =
+                CustomersWithBalance
+                    .Select(customer => customer.Id)
+                    .FirstOrDefault();
+        }
+
+        if (!SuppliersWithBalance.Any(supplier =>
+            supplier.Id == supplierForm.SupplierId))
+        {
+            supplierForm.SupplierId =
+                SuppliersWithBalance
+                    .Select(supplier => supplier.Id)
+                    .FirstOrDefault();
+        }
+    }
+
+    private void SelectLedger(LedgerView ledger)
+    {
+        activeLedger = ledger;
+        statusMessage = null;
+        statusIsError = false;
+    }
+
+    private async Task RecordCustomerPaymentAsync()
+    {
+        isSaving = true;
+        statusMessage = null;
+        statusIsError = false;
+
+        try
+        {
+            if (customerForm.CustomerId == Guid.Empty)
+            {
+                throw new InvalidOperationException(
+                    "Select a customer with an outstanding balance.");
+            }
+
+            var recordedBy = await GetRecordedByAsync();
+
+            var result =
+                await PaymentService.RecordCustomerPaymentAsync(
+                    customerForm.CustomerId,
+                    customerForm.Amount,
+                    customerForm.PaymentMethod,
+                    customerForm.ReferenceNumber,
+                    customerForm.Notes,
+                    recordedBy);
+
+            statusMessage =
+                $"Customer receipt {result.PaymentNumber} recorded. " +
+                $"৳{result.Amount:N2} was received and the account " +
+                $"balance is now ৳{result.BalanceAfter:N2}.";
+
+            customerForm = new CustomerPaymentForm();
+
+            await LoadDataAsync();
+        }
+        catch (Exception exception)
+            when (exception is
+                ArgumentException or
+                InvalidOperationException or
+                DbUpdateException)
+        {
+            statusIsError = true;
+            statusMessage = exception.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task RecordSupplierPaymentAsync()
+    {
+        isSaving = true;
+        statusMessage = null;
+        statusIsError = false;
+
+        try
+        {
+            if (supplierForm.SupplierId == Guid.Empty)
+            {
+                throw new InvalidOperationException(
+                    "Select a supplier with an outstanding balance.");
+            }
+
+            var recordedBy = await GetRecordedByAsync();
+
+            var result =
+                await PaymentService.RecordSupplierPaymentAsync(
+                    supplierForm.SupplierId,
+                    supplierForm.Amount,
+                    supplierForm.PaymentMethod,
+                    supplierForm.ReferenceNumber,
+                    supplierForm.Notes,
+                    recordedBy);
+
+            statusMessage =
+                $"Supplier payment {result.PaymentNumber} recorded. " +
+                $"৳{result.Amount:N2} was paid and the account " +
+                $"balance is now ৳{result.BalanceAfter:N2}.";
+
+            supplierForm = new SupplierPaymentForm();
+
+            await LoadDataAsync();
+        }
+        catch (Exception exception)
+            when (exception is
+                ArgumentException or
+                InvalidOperationException or
+                DbUpdateException)
+        {
+            statusIsError = true;
+            statusMessage = exception.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task<string> GetRecordedByAsync()
+    {
+        var authenticationState =
+            await AuthenticationStateProvider
+                .GetAuthenticationStateAsync();
+
+        return authenticationState.User.Identity?.Name
+            ?? "Authenticated owner";
+    }
+
+    private static string FormatPaymentMethod(
+        PaymentMethod paymentMethod)
+    {
+        return paymentMethod switch
+        {
+            PaymentMethod.MobileBanking => "Mobile banking",
+            PaymentMethod.BankTransfer => "Bank transfer",
+            _ => paymentMethod.ToString()
+        };
+    }
+
+    private enum LedgerView
+    {
+        Customers,
+        Suppliers
+    }
+
+    private sealed class CustomerPaymentForm
+    {
+        public Guid CustomerId { get; set; }
+
+        [Range(
+            typeof(decimal),
+            "0.01",
+            "999999999",
+            ErrorMessage =
+                "Enter a payment amount greater than zero.")]
+        public decimal Amount { get; set; }
+
+        public PaymentMethod PaymentMethod { get; set; } =
+            PaymentMethod.Cash;
+
+        [StringLength(100)]
+        public string? ReferenceNumber { get; set; }
+
+        [StringLength(500)]
+        public string? Notes { get; set; }
+    }
+
+    private sealed class SupplierPaymentForm
+    {
+        public Guid SupplierId { get; set; }
+
+        [Range(
+            typeof(decimal),
+            "0.01",
+            "999999999",
+            ErrorMessage =
+                "Enter a payment amount greater than zero.")]
+        public decimal Amount { get; set; }
+
+        public PaymentMethod PaymentMethod { get; set; } =
+            PaymentMethod.Cash;
+
+        [StringLength(100)]
+        public string? ReferenceNumber { get; set; }
+
+        [StringLength(500)]
+        public string? Notes { get; set; }
+    }
+}
