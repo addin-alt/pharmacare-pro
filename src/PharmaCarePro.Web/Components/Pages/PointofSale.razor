@@ -23,7 +23,16 @@
 {
     <div class="form-status pos-status
          @(statusIsError ? "status-error" : "status-success")">
-        @statusMessage
+        <span>@statusMessage</span>
+
+        @if (!statusIsError &&
+            lastCompletedSaleId.HasValue)
+        {
+            <a class="pos-invoice-link"
+               href="@($"/sales/{lastCompletedSaleId.Value}/invoice")">
+                View printable invoice
+            </a>
+        }
     </div>
 }
 
@@ -355,6 +364,8 @@
     private string? customerPhone;
     private string? statusMessage;
 
+    private Guid? lastCompletedSaleId;
+
     private decimal discountAmount;
     private decimal taxAmount;
     private decimal amountReceived;
@@ -663,6 +674,7 @@
         isProcessing = true;
         statusIsError = false;
         statusMessage = null;
+        lastCompletedSaleId = null;
 
         try
         {
@@ -840,6 +852,8 @@
 
             await database.SaveChangesAsync();
             await transaction.CommitAsync();
+
+            lastCompletedSaleId = sale.Id;
 
             var change = ChangeAmount;
 

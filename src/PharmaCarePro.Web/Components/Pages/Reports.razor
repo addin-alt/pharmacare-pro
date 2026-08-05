@@ -325,7 +325,10 @@
                     {
                         <tr @key="sale.Id">
                             <td>
-                                <strong>@sale.InvoiceNumber</strong>
+                                <a class="invoice-table-link"
+                                       href="@($"/sales/{sale.Id}/invoice")">
+                                        @sale.InvoiceNumber
+                                    </a>
                             </td>
 
                             <td>

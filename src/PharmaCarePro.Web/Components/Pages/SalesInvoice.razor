@@ -1,0 +1,625 @@
+@page "/sales/{SaleId:guid}/invoice"
+
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.JSInterop
+@using PharmaCarePro.Domain.Entities
+@using PharmaCarePro.Web.Data
+
+@inject IServiceScopeFactory ScopeFactory
+@inject IJSRuntime JavaScript
+
+<PageTitle>
+    @(sale is null
+        ? "Sales Invoice | PharmaCare Pro"
+        : $"{sale.InvoiceNumber} | PharmaCare Pro")
+</PageTitle>
+
+<div class="page-heading module-heading invoice-screen-heading">
+    <div>
+        <span class="eyebrow">SALES DOCUMENT</span>
+        <h1>Sales invoice</h1>
+        <p>
+            Review the original sale, payments, returns and current
+            settlement position.
+        </p>
+    </div>
+
+    <div class="heading-actions">
+        <a class="button button-secondary" href="/pos">
+            Back to Point of Sale
+        </a>
+
+        @if (sale is not null)
+        {
+            <button class="button button-primary"
+                    type="button"
+                    @onclick="PrintAsync">
+                Print invoice
+            </button>
+        }
+    </div>
+</div>
+
+@if (isLoading)
+{
+    <section class="dashboard-panel invoice-loading-panel">
+        <strong>Loading sales invoice...</strong>
+        <p>Reading the invoice and return ledger from Supabase.</p>
+    </section>
+}
+else if (!string.IsNullOrWhiteSpace(loadError))
+{
+    <div class="form-status status-error">
+        @loadError
+    </div>
+}
+else if (sale is not null)
+{
+    <section class="invoice-sheet">
+        <header class="invoice-document-header">
+            <div class="invoice-pharmacy-identity">
+                <div class="invoice-pharmacy-mark">Rx</div>
+
+                <div>
+                    <h2>@profile.PharmacyName</h2>
+                    <strong>@profile.BranchName</strong>
+
+                    @if (!string.IsNullOrWhiteSpace(profile.Address))
+                    {
+                        <p>@profile.Address</p>
+                    }
+
+                    <div class="invoice-contact-line">
+                        @if (!string.IsNullOrWhiteSpace(profile.Phone))
+                        {
+                            <span>@profile.Phone</span>
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(profile.Email))
+                        {
+                            <span>@profile.Email</span>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="invoice-document-title">
+                <span class="invoice-status-badge
+                    @GetStatusClass(sale.Status)">
+                    @FormatSaleStatus(sale.Status)
+                </span>
+
+                <h2>SALES INVOICE</h2>
+                <strong>@sale.InvoiceNumber</strong>
+                <small>@FormatDateTime(sale.SoldAtUtc)</small>
+            </div>
+        </header>
+
+        <section class="invoice-information-grid">
+            <article>
+                <span class="invoice-section-label">BILLED TO</span>
+
+                <strong>
+                    @(sale.Customer?.Name ??
+                        sale.CustomerName ??
+                        "Walk-in customer")
+                </strong>
+
+                @if (!string.IsNullOrWhiteSpace(
+                    sale.Customer?.CustomerCode))
+                {
+                    <small>
+                        Customer code:
+                        @sale.Customer.CustomerCode
+                    </small>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(
+                    sale.Customer?.Phone ??
+                    sale.CustomerPhone))
+                {
+                    <small>
+                        Phone:
+                        @(sale.Customer?.Phone ??
+                            sale.CustomerPhone)
+                    </small>
+                }
+            </article>
+
+            <article>
+                <span class="invoice-section-label">
+                    PAYMENT DETAILS
+                </span>
+
+                <strong>
+                    @FormatPaymentMethod(sale.PaymentMethod)
+                </strong>
+
+                <small>
+                    Current paid:
+                    @Currency(sale.PaidAmount)
+                </small>
+
+                <small>
+                    Current due:
+                    @Currency(sale.DueAmount)
+                </small>
+            </article>
+
+            <article>
+                <span class="invoice-section-label">
+                    PHARMACY DETAILS
+                </span>
+
+                @if (!string.IsNullOrWhiteSpace(
+                    profile.LicenseNumber))
+                {
+                    <strong>
+                        License @profile.LicenseNumber
+                    </strong>
+                }
+                else
+                {
+                    <strong>Licensed pharmacy</strong>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(
+                    profile.TaxIdentificationNumber))
+                {
+                    <small>
+                        Tax ID:
+                        @profile.TaxIdentificationNumber
+                    </small>
+                }
+
+                <small>
+                    Currency:
+                    @profile.CurrencyCode
+                </small>
+            </article>
+        </section>
+
+        <div class="invoice-table-wrap">
+            <table class="invoice-item-table">
+                <thead>
+                    <tr>
+                        <th>Medicine</th>
+                        <th>Batch</th>
+                        <th class="invoice-number-cell">Sold</th>
+                        <th class="invoice-number-cell">Returned</th>
+                        <th class="invoice-number-cell">Net qty</th>
+                        <th class="invoice-number-cell">Unit price</th>
+                        <th class="invoice-number-cell">Original</th>
+                        <th class="invoice-number-cell">Return</th>
+                        <th class="invoice-number-cell">Net value</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @foreach (var item in sale.Items
+                        .OrderBy(item => item.BrandName)
+                        .ThenBy(item => item.BatchNumber))
+                    {
+                        <tr @key="item.Id">
+                            <td>
+                                <strong>@item.BrandName</strong>
+                                <small>
+                                    @item.GenericName ·
+                                    @item.Strength
+                                </small>
+                            </td>
+
+                            <td>
+                                <strong>@item.BatchNumber</strong>
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                @item.Quantity
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                @ReturnedQuantity(item)
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                @NetQuantity(item)
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                @Currency(item.UnitPrice)
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                @Currency(item.LineTotal)
+                            </td>
+
+                            <td class="invoice-number-cell
+                                invoice-return-value">
+                                −@Currency(ReturnedAmount(item))
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                <strong>
+                                    @Currency(NetLineAmount(item))
+                                </strong>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="invoice-lower-grid">
+            <section class="invoice-notes-panel">
+                <span class="invoice-section-label">
+                    NOTES
+                </span>
+
+                <p>
+                    @(string.IsNullOrWhiteSpace(sale.Notes)
+                        ? "Thank you for choosing our pharmacy."
+                        : sale.Notes)
+                </p>
+
+                @if (sale.Returns.Count > 0)
+                {
+                    <div class="invoice-return-notice">
+                        <strong>
+                            This invoice contains
+                            @sale.Returns.Count
+                            recorded return transaction(s).
+                        </strong>
+
+                        <small>
+                            Returned medicines and financial adjustments
+                            are listed below.
+                        </small>
+                    </div>
+                }
+            </section>
+
+            <section class="invoice-total-panel">
+                <div>
+                    <span>Original subtotal</span>
+                    <strong>@Currency(sale.Subtotal)</strong>
+                </div>
+
+                <div>
+                    <span>Original discount</span>
+                    <strong>−@Currency(sale.DiscountAmount)</strong>
+                </div>
+
+                <div>
+                    <span>Original tax</span>
+                    <strong>@Currency(sale.TaxAmount)</strong>
+                </div>
+
+                <div>
+                    <span>Original invoice value</span>
+                    <strong>@Currency(OriginalInvoiceValue)</strong>
+                </div>
+
+                <div class="invoice-return-total">
+                    <span>Sales returns</span>
+                    <strong>−@Currency(TotalReturnedValue)</strong>
+                </div>
+
+                <div class="invoice-current-total">
+                    <span>Current invoice value</span>
+                    <strong>@Currency(sale.GrandTotal)</strong>
+                </div>
+
+                <div>
+                    <span>Paid / retained</span>
+                    <strong>@Currency(sale.PaidAmount)</strong>
+                </div>
+
+                <div>
+                    <span>Outstanding due</span>
+                    <strong>@Currency(sale.DueAmount)</strong>
+                </div>
+            </section>
+        </div>
+
+        @if (sale.Returns.Count > 0)
+        {
+            <section class="invoice-return-history">
+                <div class="invoice-return-history-heading">
+                    <div>
+                        <span class="invoice-section-label">
+                            RETURN HISTORY
+                        </span>
+
+                        <h3>Recorded sales returns</h3>
+                    </div>
+
+                    <strong>
+                        Total returned:
+                        @Currency(TotalReturnedValue)
+                    </strong>
+                </div>
+
+                <div class="invoice-table-wrap">
+                    <table class="invoice-return-table">
+                        <thead>
+                            <tr>
+                                <th>Return number</th>
+                                <th>Date</th>
+                                <th>Reason</th>
+                                <th>Units</th>
+                                <th>Due reduction</th>
+                                <th>Refunded</th>
+                                <th class="invoice-number-cell">Value</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            @foreach (var saleReturn in sale.Returns
+                                .OrderBy(item => item.ReturnedAtUtc))
+                            {
+                                <tr @key="saleReturn.Id">
+                                    <td>
+                                        <strong>
+                                            @saleReturn.ReturnNumber
+                                        </strong>
+                                    </td>
+
+                                    <td>
+                                        @FormatDateTime(
+                                            saleReturn.ReturnedAtUtc)
+                                    </td>
+
+                                    <td>@saleReturn.Reason</td>
+
+                                    <td>
+                                        @saleReturn.Items.Sum(item =>
+                                            item.Quantity)
+                                    </td>
+
+                                    <td>
+                                        @Currency(
+                                            saleReturn
+                                                .DueReductionAmount)
+                                    </td>
+
+                                    <td>
+                                        @Currency(
+                                            saleReturn.RefundedAmount)
+                                    </td>
+
+                                    <td class="invoice-number-cell
+                                        invoice-return-value">
+                                        −@Currency(
+                                            saleReturn
+                                                .GrossReturnAmount)
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        }
+
+        <footer class="invoice-document-footer">
+            <div>
+                <strong>@profile.PharmacyName</strong>
+                <span>
+                    Computer-generated invoice ·
+                    No signature required
+                </span>
+            </div>
+
+            <div>
+                <span>Developed by Addin Alt</span>
+                <strong>@sale.InvoiceNumber</strong>
+            </div>
+        </footer>
+    </section>
+}
+
+@code {
+    [Parameter]
+    public Guid SaleId { get; set; }
+
+    private Sale? sale;
+    private PharmacyProfile profile = new();
+
+    private string? loadError;
+    private bool isLoading = true;
+
+    private decimal TotalReturnedValue =>
+        sale?.Returns.Sum(item =>
+            item.GrossReturnAmount) ?? 0;
+
+    private decimal OriginalInvoiceValue =>
+        sale is null
+            ? 0
+            : Math.Round(
+                sale.GrandTotal +
+                TotalReturnedValue,
+                2);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadInvoiceAsync();
+    }
+
+    private async Task LoadInvoiceAsync()
+    {
+        isLoading = true;
+        loadError = null;
+
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+
+            var database =
+                scope.ServiceProvider
+                    .GetRequiredService<ApplicationDbContext>();
+
+            sale =
+                await database.Sales
+                    .AsNoTracking()
+                    .Include(item => item.Customer)
+                    .Include(item => item.Items)
+                    .Include(item => item.Returns)
+                        .ThenInclude(item => item.Items)
+                    .SingleOrDefaultAsync(item =>
+                        item.Id == SaleId);
+
+            if (sale is null)
+            {
+                loadError =
+                    "The requested sales invoice was not found.";
+                return;
+            }
+
+            profile =
+                await database.PharmacyProfiles
+                    .AsNoTracking()
+                    .OrderBy(item => item.CreatedAtUtc)
+                    .FirstOrDefaultAsync()
+                ?? new PharmacyProfile();
+        }
+        catch (Exception exception)
+        {
+            loadError =
+                "The sales invoice could not be loaded: " +
+                exception.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task PrintAsync()
+    {
+        await JavaScript.InvokeVoidAsync("window.print");
+    }
+
+    private int ReturnedQuantity(SaleItem item)
+    {
+        return sale?.Returns
+            .SelectMany(saleReturn => saleReturn.Items)
+            .Where(returnItem =>
+                returnItem.SaleItemId == item.Id)
+            .Sum(returnItem => returnItem.Quantity) ?? 0;
+    }
+
+    private decimal ReturnedAmount(SaleItem item)
+    {
+        return sale?.Returns
+            .SelectMany(saleReturn => saleReturn.Items)
+            .Where(returnItem =>
+                returnItem.SaleItemId == item.Id)
+            .Sum(returnItem =>
+                returnItem.LineRefundAmount) ?? 0;
+    }
+
+    private int NetQuantity(SaleItem item)
+    {
+        return Math.Max(
+            0,
+            item.Quantity -
+            ReturnedQuantity(item));
+    }
+
+    private decimal NetLineAmount(SaleItem item)
+    {
+        return Math.Max(
+            0,
+            Math.Round(
+                item.LineTotal -
+                ReturnedAmount(item),
+                2));
+    }
+
+    private string Currency(decimal amount)
+    {
+        var symbol =
+            string.IsNullOrWhiteSpace(profile.CurrencySymbol)
+                ? "৳"
+                : profile.CurrencySymbol;
+
+        return $"{symbol}{amount:N2}";
+    }
+
+    private string FormatDateTime(DateTime utcDateTime)
+    {
+        DateTime localDateTime;
+
+        try
+        {
+            var timeZone =
+                TimeZoneInfo.FindSystemTimeZoneById(
+                    profile.TimeZoneId);
+
+            localDateTime =
+                TimeZoneInfo.ConvertTimeFromUtc(
+                    DateTime.SpecifyKind(
+                        utcDateTime,
+                        DateTimeKind.Utc),
+                    timeZone);
+        }
+        catch
+        {
+            localDateTime = utcDateTime.ToLocalTime();
+        }
+
+        return localDateTime.ToString(
+            "dd MMM yyyy, hh:mm tt");
+    }
+
+    private static string FormatPaymentMethod(
+        PaymentMethod method)
+    {
+        return method switch
+        {
+            PaymentMethod.MobileBanking =>
+                "Mobile banking",
+
+            PaymentMethod.BankTransfer =>
+                "Bank transfer",
+
+            _ => method.ToString()
+        };
+    }
+
+    private static string FormatSaleStatus(
+        SaleStatus status)
+    {
+        return status switch
+        {
+            SaleStatus.PartiallyPaid =>
+                "Partially paid",
+
+            _ => status.ToString()
+        };
+    }
+
+    private static string GetStatusClass(
+        SaleStatus status)
+    {
+        return status switch
+        {
+            SaleStatus.Completed =>
+                "invoice-status-completed",
+
+            SaleStatus.Due =>
+                "invoice-status-due",
+
+            SaleStatus.PartiallyPaid =>
+                "invoice-status-partial",
+
+            SaleStatus.Refunded =>
+                "invoice-status-refunded",
+
+            SaleStatus.Cancelled =>
+                "invoice-status-cancelled",
+
+            _ => "invoice-status-partial"
+        };
+    }
+}
