@@ -1,0 +1,965 @@
+@page "/returns"
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using PharmaCarePro.Application.Returns
+@using PharmaCarePro.Domain.Entities
+@using PharmaCarePro.Web.Data
+@using PharmaCarePro.Web.Services.Returns
+
+@inject IServiceScopeFactory ScopeFactory
+@inject SaleReturnService SaleReturnService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Sales Returns | PharmaCare Pro</PageTitle>
+
+<div class="page-heading module-heading return-page-heading">
+    <div>
+        <span class="eyebrow">SALES REVERSAL</span>
+        <h1>Sales returns</h1>
+        <p>
+            Return sold medicines, adjust customer dues, issue refunds
+            and maintain an auditable stock trail.
+        </p>
+    </div>
+
+    <a class="button button-secondary" href="/pos">
+        Open Point of Sale
+    </a>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <div class="form-status return-status
+         @(statusIsError ? "status-error" : "status-success")">
+        @statusMessage
+    </div>
+}
+
+<section class="return-summary-grid">
+    <article class="return-summary-card">
+        <span>Returns recorded</span>
+        <strong>@saleReturns.Count</strong>
+        <small>Recent return transactions</small>
+    </article>
+
+    <article class="return-summary-card">
+        <span>Returned value</span>
+        <strong>৳@TotalReturnedValue.ToString("N2")</strong>
+        <small>Gross value reversed</small>
+    </article>
+
+    <article class="return-summary-card">
+        <span>Customer refunds</span>
+        <strong>৳@TotalRefundedValue.ToString("N2")</strong>
+        <small>Money returned to customers</small>
+    </article>
+
+    <article class="return-summary-card">
+        <span>Due reductions</span>
+        <strong>৳@TotalDueReduction.ToString("N2")</strong>
+        <small>Unpaid balances cancelled</small>
+    </article>
+</section>
+
+@if (isLoading)
+{
+    <section class="dashboard-panel return-loading-panel">
+        <strong>Loading returnable sales...</strong>
+        <p>Reading invoices and return history from Supabase.</p>
+    </section>
+}
+else
+{
+    <div class="return-workspace">
+        <section class="dashboard-panel return-sale-panel">
+            <div class="panel-heading">
+                <div>
+                    <span class="return-panel-kicker">
+                        ORIGINAL INVOICE
+                    </span>
+                    <h2>Select a sale</h2>
+                    <p>Search recent invoices with returnable items.</p>
+                </div>
+            </div>
+
+            <input class="return-search"
+                   type="search"
+                   @bind="searchText"
+                   @bind:event="oninput"
+                   placeholder="Search invoice, customer or phone..." />
+
+            @if (!FilteredSales.Any())
+            {
+                <div class="return-empty-state">
+                    <strong>No returnable sales found</strong>
+                    <p>
+                        Completed returns and cancelled invoices are
+                        excluded automatically.
+                    </p>
+                </div>
+            }
+            else
+            {
+                <div class="return-sale-list">
+                    @foreach (var sale in FilteredSales)
+                    {
+                        <button type="button"
+                                class="return-sale-card
+                                    @(sale.Id == selectedSaleId
+                                        ? "is-selected"
+                                        : string.Empty)"
+                                @key="sale.Id"
+                                @onclick="() => SelectSale(sale.Id)">
+                            <span class="return-invoice-icon">INV</span>
+
+                            <span class="return-sale-details">
+                                <strong>@sale.InvoiceNumber</strong>
+                                <small>
+                                    @(sale.CustomerName ??
+                                        sale.Customer?.Name ??
+                                        "Walk-in customer")
+                                </small>
+                                <small>
+                                    @(sale.SoldAtUtc
+                                        .ToLocalTime()
+                                        .ToString(
+                                            "dd MMM yyyy, hh:mm tt"))
+                                </small>
+                            </span>
+
+                            <span class="return-sale-value">
+                                <strong>
+                                    ৳@sale.GrandTotal.ToString("N2")
+                                </strong>
+                                <small>
+                                    @GetRemainingQuantity(sale)
+                                    unit(s) returnable
+                                </small>
+                            </span>
+                        </button>
+                    }
+                </div>
+            }
+        </section>
+
+        <section class="dashboard-panel return-entry-panel">
+            @if (SelectedSale is null)
+            {
+                <div class="return-empty-state return-select-prompt">
+                    <span>↩</span>
+                    <strong>Select an invoice</strong>
+                    <p>
+                        Choose a sale from the invoice list to begin a
+                        return.
+                    </p>
+                </div>
+            }
+            else
+            {
+                <div class="panel-heading">
+                    <div>
+                        <span class="return-panel-kicker">
+                            RETURN TRANSACTION
+                        </span>
+                        <h2>@SelectedSale.InvoiceNumber</h2>
+                        <p>
+                            @(SelectedSale.CustomerName ??
+                                SelectedSale.Customer?.Name ??
+                                "Walk-in customer")
+                            ·
+                            @FormatSaleStatus(SelectedSale.Status)
+                        </p>
+                    </div>
+
+                    <span class="return-due-pill">
+                        Due ৳@SelectedSale.DueAmount.ToString("N2")
+                    </span>
+                </div>
+
+                <EditForm Model="form"
+                          FormName="sale-return"
+                          OnValidSubmit="RecordReturnAsync">
+                    <DataAnnotationsValidator />
+
+                    <div class="return-line-list">
+                        @foreach (var line in returnLines)
+                        {
+                            <article class="return-line-card"
+                                     @key="line.SaleItemId">
+                                <div class="return-line-heading">
+                                    <div>
+                                        <strong>@line.DisplayName</strong>
+                                        <small>
+                                            @line.Strength ·
+                                            Batch @line.BatchNumber
+                                        </small>
+                                    </div>
+
+                                    <span>
+                                        @line.MaximumQuantity remaining
+                                    </span>
+                                </div>
+
+                                <div class="return-line-controls">
+                                    <div class="form-field">
+                                        <label>Return quantity</label>
+
+                                        <InputNumber
+                                            @bind-Value="line.Quantity"
+                                            min="0"
+                                            max="@line.MaximumQuantity" />
+                                    </div>
+
+                                    <div class="form-field">
+                                        <label>Stock action</label>
+
+                                        <InputSelect
+                                            @bind-Value="line.StockAction">
+                                            <option
+                                                value="@ReturnStockAction.Restock">
+                                                Restock as saleable
+                                            </option>
+
+                                            <option
+                                                value="@ReturnStockAction.Quarantine">
+                                                Hold in quarantine
+                                            </option>
+
+                                            <option
+                                                value="@ReturnStockAction.Dispose">
+                                                Dispose / damaged
+                                            </option>
+                                        </InputSelect>
+                                    </div>
+
+                                    <div class="return-line-estimate">
+                                        <span>Estimated value</span>
+                                        <strong>
+                                            ৳@(EstimateLine(line).ToString("N2"))
+                                        </strong>
+                                    </div>
+                                </div>
+                            </article>
+                        }
+                    </div>
+
+                    <div class="return-form-grid">
+                        <div class="form-field">
+                            <label>Return reason</label>
+
+                            <InputText
+                                @bind-Value="form.Reason"
+                                placeholder="Example: Customer changed treatment" />
+
+                            <ValidationMessage
+                                For="() => form.Reason" />
+                        </div>
+
+                        <div class="form-field">
+                            <label>Refund method</label>
+
+                            <InputSelect
+                                @bind-Value="form.RefundMethod">
+                                @foreach (var method in RefundMethods)
+                                {
+                                    <option value="@method">
+                                        @FormatPaymentMethod(method)
+                                    </option>
+                                }
+                            </InputSelect>
+
+                            <small class="return-field-help">
+                                Used only when money must be refunded.
+                            </small>
+                        </div>
+
+                        <div class="form-field return-notes-field">
+                            <label>Return notes</label>
+
+                            <InputTextArea
+                                @bind-Value="form.Notes"
+                                rows="3"
+                                placeholder="Optional inspection or refund notes" />
+
+                            <ValidationMessage
+                                For="() => form.Notes" />
+                        </div>
+                    </div>
+
+                    <div class="return-settlement-preview">
+                        <div>
+                            <span>Return value</span>
+                            <strong>
+                                ৳@EstimatedGrossReturn.ToString("N2")
+                            </strong>
+                        </div>
+
+                        <div>
+                            <span>Due reduction</span>
+                            <strong>
+                                ৳@EstimatedDueReduction.ToString("N2")
+                            </strong>
+                        </div>
+
+                        <div>
+                            <span>Customer refund</span>
+                            <strong class="return-refund-value">
+                                ৳@EstimatedCashRefund.ToString("N2")
+                            </strong>
+                        </div>
+                    </div>
+
+                    <div class="return-safety-note">
+                        <span>!</span>
+                        <p>
+                            Use <strong>Restock</strong> only when the
+                            returned medicine is sealed, undamaged and
+                            suitable for resale. Otherwise select
+                            quarantine or disposal.
+                        </p>
+                    </div>
+
+                    <button type="submit"
+                            class="button button-primary
+                                return-submit-button"
+                            disabled="@isSaving">
+                        @(isSaving
+                            ? "Recording return..."
+                            : "Record sales return")
+                    </button>
+                </EditForm>
+            }
+        </section>
+    </div>
+
+    <section class="dashboard-panel return-history-panel">
+        <div class="panel-heading">
+            <div>
+                <span class="return-panel-kicker">
+                    RETURN LEDGER
+                </span>
+                <h2>Recent sales returns</h2>
+                <p>
+                    Recorded refunds, due reductions and stock actions.
+                </p>
+            </div>
+        </div>
+
+        @if (!saleReturns.Any())
+        {
+            <div class="return-empty-state">
+                <strong>No sales returns recorded</strong>
+                <p>The first completed return will appear here.</p>
+            </div>
+        }
+        else
+        {
+            <div class="return-history-wrap">
+                <table class="return-history-table">
+                    <thead>
+                        <tr>
+                            <th>Return</th>
+                            <th>Invoice</th>
+                            <th>Customer</th>
+                            <th>Items</th>
+                            <th>Settlement</th>
+                            <th>Recorded by</th>
+                            <th class="return-number-column">Value</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @foreach (var saleReturn in saleReturns)
+                        {
+                            <tr @key="saleReturn.Id">
+                                <td>
+                                    <strong>
+                                        @saleReturn.ReturnNumber
+                                    </strong>
+                                    <small>
+                                        @(saleReturn.ReturnedAtUtc
+                                            .ToLocalTime()
+                                            .ToString(
+                                                "dd MMM yyyy, hh:mm tt"))
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <strong>
+                                        @saleReturn.Sale.InvoiceNumber
+                                    </strong>
+                                    <small>@saleReturn.Reason</small>
+                                </td>
+
+                                <td>
+                                    <strong>
+                                        @(saleReturn.Customer?.Name ??
+                                            saleReturn.Sale.CustomerName ??
+                                            "Walk-in customer")
+                                    </strong>
+                                    <small>
+                                        @(saleReturn.Customer?
+                                            .CustomerCode ??
+                                            "No account")
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <strong>
+                                        @saleReturn.Items.Sum(item =>
+                                            item.Quantity)
+                                        unit(s)
+                                    </strong>
+                                    <small>
+                                        @saleReturn.Items.Count line(s)
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <strong>
+                                        Due −৳@(saleReturn.DueReductionAmount.ToString("N2"))
+                                    </strong>
+                                    <small>
+                                        Refund ৳@(saleReturn.RefundedAmount.ToString("N2"))
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <strong>
+                                        @saleReturn.RecordedBy
+                                    </strong>
+                                    <small>Authenticated user</small>
+                                </td>
+
+                                <td class="return-number-column">
+                                    <strong class="return-negative-value">
+                                        −৳@(saleReturn.GrossReturnAmount.ToString("N2"))
+                                    </strong>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+
+@code {
+    private static readonly PaymentMethod[] RefundMethods =
+    [
+        PaymentMethod.Cash,
+        PaymentMethod.Card,
+        PaymentMethod.MobileBanking,
+        PaymentMethod.BankTransfer
+    ];
+
+    private List<Sale> sales = [];
+    private List<SaleReturn> saleReturns = [];
+    private List<ReturnLineForm> returnLines = [];
+
+    private ReturnForm form = new();
+
+    private Guid? selectedSaleId;
+    private string searchText = string.Empty;
+    private string? statusMessage;
+
+    private bool statusIsError;
+    private bool isLoading = true;
+    private bool isSaving;
+
+    private IEnumerable<Sale> FilteredSales
+    {
+        get
+        {
+            var returnableSales =
+                sales.Where(sale =>
+                    GetRemainingQuantity(sale) > 0 &&
+                    sale.Status != SaleStatus.Cancelled &&
+                    sale.Status != SaleStatus.Refunded);
+
+            if (string.IsNullOrWhiteSpace(searchText))
+            {
+                return returnableSales;
+            }
+
+            var search = searchText.Trim();
+
+            return returnableSales.Where(sale =>
+                sale.InvoiceNumber.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ||
+                (sale.CustomerName?.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (sale.Customer?.Name.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (sale.CustomerPhone?.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+    }
+
+    private Sale? SelectedSale =>
+        sales.FirstOrDefault(sale =>
+            sale.Id == selectedSaleId);
+
+    private decimal TotalReturnedValue =>
+        saleReturns.Sum(item => item.GrossReturnAmount);
+
+    private decimal TotalRefundedValue =>
+        saleReturns.Sum(item => item.RefundedAmount);
+
+    private decimal TotalDueReduction =>
+        saleReturns.Sum(item => item.DueReductionAmount);
+
+    private decimal EstimatedGrossReturn =>
+        CalculateEstimate()?.GrossReturnAmount ?? 0;
+
+    private decimal EstimatedDueReduction =>
+        SelectedSale is null
+            ? 0
+            : Math.Min(
+                SelectedSale.DueAmount,
+                EstimatedGrossReturn);
+
+    private decimal EstimatedCashRefund =>
+        Math.Max(
+            0,
+            EstimatedGrossReturn -
+            EstimatedDueReduction);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        isLoading = true;
+
+        using var scope = ScopeFactory.CreateScope();
+
+        var database =
+            scope.ServiceProvider
+                .GetRequiredService<ApplicationDbContext>();
+
+        sales =
+            await database.Sales
+                .AsNoTracking()
+                .Include(sale => sale.Customer)
+                .Include(sale => sale.Items)
+                .Include(sale => sale.Returns)
+                    .ThenInclude(saleReturn => saleReturn.Items)
+                .OrderByDescending(sale => sale.SoldAtUtc)
+                .Take(100)
+                .ToListAsync();
+
+        saleReturns =
+            await database.SaleReturns
+                .AsNoTracking()
+                .Include(saleReturn => saleReturn.Sale)
+                .Include(saleReturn => saleReturn.Customer)
+                .Include(saleReturn => saleReturn.Items)
+                .OrderByDescending(saleReturn =>
+                    saleReturn.ReturnedAtUtc)
+                .Take(40)
+                .ToListAsync();
+
+        var previousSelection = selectedSaleId;
+
+        var firstReturnableSale =
+            sales.FirstOrDefault(sale =>
+                GetRemainingQuantity(sale) > 0 &&
+                sale.Status != SaleStatus.Cancelled &&
+                sale.Status != SaleStatus.Refunded);
+
+        var selectedStillReturnable =
+            sales.Any(sale =>
+                sale.Id == previousSelection &&
+                GetRemainingQuantity(sale) > 0 &&
+                sale.Status != SaleStatus.Cancelled &&
+                sale.Status != SaleStatus.Refunded);
+
+        selectedSaleId =
+            selectedStillReturnable
+                ? previousSelection
+                : firstReturnableSale?.Id;
+
+        BuildReturnLines();
+
+        isLoading = false;
+    }
+
+    private void SelectSale(Guid saleId)
+    {
+        selectedSaleId = saleId;
+        form = new ReturnForm();
+        statusMessage = null;
+        statusIsError = false;
+
+        BuildReturnLines();
+    }
+
+    private void BuildReturnLines()
+    {
+        returnLines = [];
+
+        if (SelectedSale is null)
+        {
+            return;
+        }
+
+        var returnedQuantityByItem =
+            SelectedSale.Returns
+                .SelectMany(saleReturn =>
+                    saleReturn.Items)
+                .GroupBy(item => item.SaleItemId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Sum(item => item.Quantity));
+
+        foreach (var item in SelectedSale.Items
+            .OrderBy(item => item.BrandName)
+            .ThenBy(item => item.BatchNumber))
+        {
+            var remainingQuantity =
+                item.Quantity -
+                returnedQuantityByItem.GetValueOrDefault(item.Id);
+
+            if (remainingQuantity <= 0)
+            {
+                continue;
+            }
+
+            returnLines.Add(
+                new ReturnLineForm
+                {
+                    SaleItemId = item.Id,
+                    DisplayName =
+                        $"{item.BrandName} / {item.GenericName}",
+                    Strength = item.Strength,
+                    BatchNumber = item.BatchNumber,
+                    MaximumQuantity = remainingQuantity,
+                    Quantity = 0,
+                    StockAction =
+                        ReturnStockAction.Quarantine
+                });
+        }
+    }
+
+    private async Task RecordReturnAsync()
+    {
+        isSaving = true;
+        statusMessage = null;
+        statusIsError = false;
+
+        try
+        {
+            if (SelectedSale is null)
+            {
+                throw new InvalidOperationException(
+                    "Select an invoice to return.");
+            }
+
+            var selectedLines =
+                returnLines
+                    .Where(line => line.Quantity > 0)
+                    .Select(line =>
+                        new SaleReturnItemRequest(
+                            line.SaleItemId,
+                            line.Quantity,
+                            line.StockAction))
+                    .ToList();
+
+            if (selectedLines.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "Enter a return quantity for at least one item.");
+            }
+
+            foreach (var line in returnLines.Where(line =>
+                line.Quantity > 0))
+            {
+                if (line.Quantity > line.MaximumQuantity)
+                {
+                    throw new InvalidOperationException(
+                        $"{line.DisplayName} cannot exceed " +
+                        $"{line.MaximumQuantity} returnable unit(s).");
+                }
+            }
+
+            var recordedBy = await GetRecordedByAsync();
+
+            var result =
+                await SaleReturnService.RecordAsync(
+                    new SaleReturnRequest(
+                        SelectedSale.Id,
+                        selectedLines,
+                        form.Reason,
+                        form.RefundMethod,
+                        form.Notes,
+                        recordedBy));
+
+            statusMessage =
+                $"Return {result.ReturnNumber} recorded for " +
+                $"{result.InvoiceNumber}. " +
+                $"Return value ৳{result.GrossReturnAmount:N2}, " +
+                $"due reduction ৳{result.DueReductionAmount:N2}, " +
+                $"customer refund ৳{result.RefundedAmount:N2}.";
+
+            form = new ReturnForm();
+            searchText = string.Empty;
+
+            await LoadDataAsync();
+        }
+        catch (Exception exception)
+            when (exception is
+                ArgumentException or
+                InvalidOperationException or
+                DbUpdateException)
+        {
+            statusIsError = true;
+            statusMessage = exception.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private SaleReturnCalculation? CalculateEstimate()
+    {
+        if (SelectedSale is null)
+        {
+            return null;
+        }
+
+        var selectedLines =
+            returnLines
+                .Where(line => line.Quantity > 0)
+                .ToList();
+
+        if (selectedLines.Count == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            var entitlements =
+                CalculateOriginalEntitlements(SelectedSale);
+
+            var previousQuantityByItem =
+                SelectedSale.Returns
+                    .SelectMany(saleReturn =>
+                        saleReturn.Items)
+                    .GroupBy(item => item.SaleItemId)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.Sum(item =>
+                            item.Quantity));
+
+            var previousAmountByItem =
+                SelectedSale.Returns
+                    .SelectMany(saleReturn =>
+                        saleReturn.Items)
+                    .GroupBy(item => item.SaleItemId)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.Sum(item =>
+                            item.LineRefundAmount));
+
+            var itemsById =
+                SelectedSale.Items.ToDictionary(item => item.Id);
+
+            return SaleReturnCalculator.Calculate(
+                selectedLines.Select(line =>
+                {
+                    var item = itemsById[line.SaleItemId];
+
+                    return new SaleReturnLineCandidate(
+                        item.Id,
+                        item.Quantity,
+                        previousQuantityByItem
+                            .GetValueOrDefault(item.Id),
+                        entitlements[item.Id],
+                        previousAmountByItem
+                            .GetValueOrDefault(item.Id),
+                        line.Quantity);
+                }));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private decimal EstimateLine(ReturnLineForm line)
+    {
+        var estimate = CalculateEstimate();
+
+        return estimate?.Lines
+            .FirstOrDefault(item =>
+                item.SaleItemId == line.SaleItemId)
+            ?.LineRefundAmount ?? 0;
+    }
+
+    private static Dictionary<Guid, decimal>
+        CalculateOriginalEntitlements(Sale sale)
+    {
+        var orderedItems =
+            sale.Items
+                .OrderBy(item => item.Id)
+                .ToList();
+
+        var originalGross =
+            sale.GrandTotal +
+            sale.Returns.Sum(item =>
+                item.GrossReturnAmount);
+
+        var originalLines =
+            orderedItems.Sum(item => item.LineTotal);
+
+        var result = new Dictionary<Guid, decimal>();
+
+        if (orderedItems.Count == 0 ||
+            originalLines <= 0)
+        {
+            return result;
+        }
+
+        decimal assigned = 0;
+
+        for (var index = 0;
+             index < orderedItems.Count;
+             index++)
+        {
+            var item = orderedItems[index];
+
+            decimal entitlement;
+
+            if (index == orderedItems.Count - 1)
+            {
+                entitlement =
+                    RoundMoney(originalGross - assigned);
+            }
+            else
+            {
+                entitlement =
+                    RoundMoney(
+                        originalGross *
+                        item.LineTotal /
+                        originalLines);
+
+                assigned =
+                    RoundMoney(assigned + entitlement);
+            }
+
+            result[item.Id] =
+                Math.Max(0, entitlement);
+        }
+
+        return result;
+    }
+
+    private static int GetRemainingQuantity(Sale sale)
+    {
+        var soldQuantity =
+            sale.Items.Sum(item => item.Quantity);
+
+        var returnedQuantity =
+            sale.Returns
+                .SelectMany(saleReturn =>
+                    saleReturn.Items)
+                .Sum(item => item.Quantity);
+
+        return Math.Max(
+            0,
+            soldQuantity - returnedQuantity);
+    }
+
+    private async Task<string> GetRecordedByAsync()
+    {
+        var authenticationState =
+            await AuthenticationStateProvider
+                .GetAuthenticationStateAsync();
+
+        return authenticationState.User.Identity?.Name
+            ?? "Authenticated owner";
+    }
+
+    private static string FormatPaymentMethod(
+        PaymentMethod paymentMethod)
+    {
+        return paymentMethod switch
+        {
+            PaymentMethod.MobileBanking =>
+                "Mobile banking",
+
+            PaymentMethod.BankTransfer =>
+                "Bank transfer",
+
+            _ => paymentMethod.ToString()
+        };
+    }
+
+    private static string FormatSaleStatus(
+        SaleStatus status)
+    {
+        return status switch
+        {
+            SaleStatus.PartiallyPaid =>
+                "Partially paid",
+
+            _ => status.ToString()
+        };
+    }
+
+    private static decimal RoundMoney(decimal amount)
+    {
+        return Math.Round(
+            amount,
+            2,
+            MidpointRounding.AwayFromZero);
+    }
+
+    private sealed class ReturnForm
+    {
+        [Required(
+            ErrorMessage =
+                "Return reason is required.")]
+        [StringLength(200)]
+        public string Reason { get; set; } =
+            string.Empty;
+
+        public PaymentMethod RefundMethod { get; set; } =
+            PaymentMethod.Cash;
+
+        [StringLength(500)]
+        public string? Notes { get; set; }
+    }
+
+    private sealed class ReturnLineForm
+    {
+        public Guid SaleItemId { get; set; }
+
+        public string DisplayName { get; set; } =
+            string.Empty;
+
+        public string Strength { get; set; } =
+            string.Empty;
+
+        public string BatchNumber { get; set; } =
+            string.Empty;
+
+        public int MaximumQuantity { get; set; }
+
+        public int Quantity { get; set; }
+
+        public ReturnStockAction StockAction { get; set; }
+    }
+}
