@@ -50,4 +50,7 @@ public sealed class Customer
 
     public ICollection<Sale> Sales { get; set; } =
         new List<Sale>();
+
+    public ICollection<CustomerPayment> Payments { get; set; } =
+        new List<CustomerPayment>();
 }

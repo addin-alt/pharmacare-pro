@@ -28,6 +28,20 @@ public class ApplicationDbContext(
 
     public DbSet<Customer> Customers => Set<Customer>();
 
+    public DbSet<CustomerPayment> CustomerPayments =>
+        Set<CustomerPayment>();
+
+    public DbSet<CustomerPaymentAllocation>
+        CustomerPaymentAllocations =>
+        Set<CustomerPaymentAllocation>();
+
+    public DbSet<SupplierPayment> SupplierPayments =>
+        Set<SupplierPayment>();
+
+    public DbSet<SupplierPaymentAllocation>
+        SupplierPaymentAllocations =>
+        Set<SupplierPaymentAllocation>();
+
     public DbSet<Prescription> Prescriptions => Set<Prescription>();
 
     public DbSet<PrescriptionItem> PrescriptionItems => Set<PrescriptionItem>();
@@ -385,6 +399,227 @@ public class ApplicationDbContext(
 
             entity.Property(customer => customer.CurrentBalance)
                 .HasPrecision(18, 2);
+        });
+
+
+        builder.Entity<CustomerPayment>(entity =>
+        {
+            entity.ToTable(
+                "CustomerPayments",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_CustomerPayments_Amount",
+                        "\"Amount\" > 0");
+
+                    table.HasCheckConstraint(
+                        "CK_CustomerPayments_BalanceBefore",
+                        "\"BalanceBefore\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_CustomerPayments_BalanceAfter",
+                        "\"BalanceAfter\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_CustomerPayments_BalanceFlow",
+                        "\"BalanceBefore\" >= \"BalanceAfter\"");
+
+                    table.HasCheckConstraint(
+                        "CK_CustomerPayments_ApplicationTotal",
+                        "\"AppliedToSalesAmount\" + " +
+                        "\"AppliedToAccountBalanceAmount\" = " +
+                        "\"Amount\"");
+
+                    table.HasCheckConstraint(
+                        "CK_CustomerPayments_PaymentMethod",
+                        "\"PaymentMethod\" <> 'Due'");
+                });
+
+            entity.HasKey(payment => payment.Id);
+
+            entity.HasIndex(payment => payment.ReceiptNumber)
+                .IsUnique();
+
+            entity.HasIndex(payment => payment.CustomerId);
+            entity.HasIndex(payment => payment.ReceivedAtUtc);
+            entity.HasIndex(payment => payment.PaymentMethod);
+
+            entity.Property(payment => payment.Amount)
+                .HasPrecision(18, 2);
+
+            entity.Property(payment => payment.BalanceBefore)
+                .HasPrecision(18, 2);
+
+            entity.Property(payment => payment.BalanceAfter)
+                .HasPrecision(18, 2);
+
+            entity.Property(payment => payment.AppliedToSalesAmount)
+                .HasPrecision(18, 2);
+
+            entity.Property(
+                    payment =>
+                        payment.AppliedToAccountBalanceAmount)
+                .HasPrecision(18, 2);
+
+            entity.Property(payment => payment.PaymentMethod)
+                .HasConversion<string>()
+                .HasMaxLength(40);
+
+            entity.HasOne(payment => payment.Customer)
+                .WithMany(customer => customer.Payments)
+                .HasForeignKey(payment => payment.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<CustomerPaymentAllocation>(entity =>
+        {
+            entity.ToTable(
+                "CustomerPaymentAllocations",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_CustomerPaymentAllocations_Amount",
+                        "\"Amount\" > 0");
+                });
+
+            entity.HasKey(allocation => allocation.Id);
+
+            entity.HasIndex(
+                    allocation => new
+                    {
+                        allocation.CustomerPaymentId,
+                        allocation.SaleId
+                    })
+                .IsUnique();
+
+            entity.HasIndex(allocation => allocation.SaleId);
+
+            entity.Property(allocation => allocation.Amount)
+                .HasPrecision(18, 2);
+
+            entity.HasOne(
+                    allocation =>
+                        allocation.CustomerPayment)
+                .WithMany(payment => payment.Allocations)
+                .HasForeignKey(
+                    allocation =>
+                        allocation.CustomerPaymentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(allocation => allocation.Sale)
+                .WithMany()
+                .HasForeignKey(allocation => allocation.SaleId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<SupplierPayment>(entity =>
+        {
+            entity.ToTable(
+                "SupplierPayments",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_SupplierPayments_Amount",
+                        "\"Amount\" > 0");
+
+                    table.HasCheckConstraint(
+                        "CK_SupplierPayments_BalanceBefore",
+                        "\"BalanceBefore\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_SupplierPayments_BalanceAfter",
+                        "\"BalanceAfter\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_SupplierPayments_BalanceFlow",
+                        "\"BalanceBefore\" >= \"BalanceAfter\"");
+
+                    table.HasCheckConstraint(
+                        "CK_SupplierPayments_ApplicationTotal",
+                        "\"AppliedToPurchasesAmount\" + " +
+                        "\"AppliedToAccountBalanceAmount\" = " +
+                        "\"Amount\"");
+
+                    table.HasCheckConstraint(
+                        "CK_SupplierPayments_PaymentMethod",
+                        "\"PaymentMethod\" <> 'Due'");
+                });
+
+            entity.HasKey(payment => payment.Id);
+
+            entity.HasIndex(payment => payment.PaymentNumber)
+                .IsUnique();
+
+            entity.HasIndex(payment => payment.SupplierId);
+            entity.HasIndex(payment => payment.PaidAtUtc);
+            entity.HasIndex(payment => payment.PaymentMethod);
+
+            entity.Property(payment => payment.Amount)
+                .HasPrecision(18, 2);
+
+            entity.Property(payment => payment.BalanceBefore)
+                .HasPrecision(18, 2);
+
+            entity.Property(payment => payment.BalanceAfter)
+                .HasPrecision(18, 2);
+
+            entity.Property(payment => payment.AppliedToPurchasesAmount)
+                .HasPrecision(18, 2);
+
+            entity.Property(
+                    payment =>
+                        payment.AppliedToAccountBalanceAmount)
+                .HasPrecision(18, 2);
+
+            entity.Property(payment => payment.PaymentMethod)
+                .HasConversion<string>()
+                .HasMaxLength(40);
+
+            entity.HasOne(payment => payment.Supplier)
+                .WithMany(supplier => supplier.Payments)
+                .HasForeignKey(payment => payment.SupplierId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<SupplierPaymentAllocation>(entity =>
+        {
+            entity.ToTable(
+                "SupplierPaymentAllocations",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_SupplierPaymentAllocations_Amount",
+                        "\"Amount\" > 0");
+                });
+
+            entity.HasKey(allocation => allocation.Id);
+
+            entity.HasIndex(
+                    allocation => new
+                    {
+                        allocation.SupplierPaymentId,
+                        allocation.PurchaseId
+                    })
+                .IsUnique();
+
+            entity.HasIndex(allocation => allocation.PurchaseId);
+
+            entity.Property(allocation => allocation.Amount)
+                .HasPrecision(18, 2);
+
+            entity.HasOne(
+                    allocation =>
+                        allocation.SupplierPayment)
+                .WithMany(payment => payment.Allocations)
+                .HasForeignKey(
+                    allocation =>
+                        allocation.SupplierPaymentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(allocation => allocation.Purchase)
+                .WithMany()
+                .HasForeignKey(allocation => allocation.PurchaseId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         builder.Entity<Prescription>(entity =>

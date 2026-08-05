@@ -48,4 +48,7 @@ public sealed class Supplier
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
+
+    public ICollection<SupplierPayment> Payments { get; set; } =
+        new List<SupplierPayment>();
 }
