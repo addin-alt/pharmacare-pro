@@ -87,7 +87,8 @@
         </strong>
 
         <small>
-            ৳@todayPaidValue.ToString("N2") received today
+            ৳@(todayPaidValue.ToString("N2")) received today ·
+            ৳@(todayReturnsValue.ToString("N2")) returned today
         </small>
     </article>
 
@@ -461,6 +462,7 @@
 
     private decimal todaySalesValue;
     private decimal todayPaidValue;
+    private decimal todayReturnsValue;
     private decimal customerReceivable;
     private decimal supplierPayable;
 
@@ -540,16 +542,34 @@
                 await todaySalesQuery.SumAsync(
                     sale => (decimal?)sale.PaidAmount) ?? 0;
 
-            todayUnitsSold =
+            todayReturnsValue =
+                await database.SaleReturns
+                    .AsNoTracking()
+                    .Where(saleReturn =>
+                        saleReturn.ReturnedAtUtc >= todayStartUtc &&
+                        saleReturn.ReturnedAtUtc < tomorrowStartUtc)
+                    .SumAsync(saleReturn =>
+                        (decimal?)saleReturn.GrossReturnAmount) ?? 0;
+
+            var todaySaleItems =
                 await database.SaleItems
                     .AsNoTracking()
+                    .Include(item => item.ReturnItems)
                     .Where(item =>
                         item.Sale != null &&
                         item.Sale.SoldAtUtc >= todayStartUtc &&
                         item.Sale.SoldAtUtc < tomorrowStartUtc &&
                         item.Sale.Status != SaleStatus.Cancelled &&
                         item.Sale.Status != SaleStatus.Refunded)
-                    .SumAsync(item => (int?)item.Quantity) ?? 0;
+                    .ToListAsync();
+
+            todayUnitsSold =
+                todaySaleItems.Sum(item =>
+                    Math.Max(
+                        0,
+                        item.Quantity -
+                        item.ReturnItems.Sum(returnItem =>
+                            returnItem.Quantity)));
 
             recentSales.AddRange(
                 await database.Sales
