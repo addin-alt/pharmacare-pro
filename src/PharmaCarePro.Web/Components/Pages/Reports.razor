@@ -61,7 +61,10 @@
     <article class="report-summary-card">
         <span>Sales revenue</span>
         <strong>৳@salesRevenue.ToString("N2")</strong>
-        <small>@invoiceCount sales invoices</small>
+        <small>
+            @invoiceCount sales invoices ·
+            ৳@salesReturns.ToString("N2") returned in period
+        </small>
     </article>
 
     <article class="report-summary-card">
@@ -125,8 +128,9 @@
         </div>
 
         <p class="report-method-note">
-            Estimated gross profit uses each sold batch's recorded purchase
-            price and excludes allocation of invoice-level discounts and tax.
+            Net sales, sold quantities and estimated cost of goods exclude
+            recorded sales returns. Cost uses each sold batch's recorded
+            purchase price.
         </p>
     </section>
 
@@ -378,6 +382,7 @@
     private decimal salesDue;
     private decimal salesDiscounts;
     private decimal salesTax;
+    private decimal salesReturns;
 
     private decimal itemSalesValue;
     private decimal estimatedCostOfGoods;
@@ -450,6 +455,7 @@
                 .AsNoTracking()
                 .Include(item => item.Sale)
                 .Include(item => item.MedicineBatch)
+                .Include(item => item.ReturnItems)
                 .Where(item =>
                     item.Sale != null &&
                     item.Sale.SoldAtUtc >= startUtc &&
@@ -457,6 +463,21 @@
                     item.Sale.Status != SaleStatus.Cancelled &&
                     item.Sale.Status != SaleStatus.Refunded)
                 .ToListAsync();
+
+            var netSaleItems =
+                saleItems
+                    .Select(item =>
+                        new NetSaleItem(
+                            item,
+                            Math.Max(
+                                0,
+                                item.Quantity -
+                                item.ReturnItems.Sum(
+                                    returnItem =>
+                                        returnItem.Quantity))))
+                    .Where(item =>
+                        item.RemainingQuantity > 0)
+                    .ToList();
 
             var purchases = await database.Purchases
                 .AsNoTracking()
@@ -474,24 +495,42 @@
                 sales.Sum(sale => sale.DiscountAmount);
             salesTax = sales.Sum(sale => sale.TaxAmount);
 
+            salesReturns =
+                await database.SaleReturns
+                    .AsNoTracking()
+                    .Where(saleReturn =>
+                        saleReturn.ReturnedAtUtc >= startUtc &&
+                        saleReturn.ReturnedAtUtc < endUtc)
+                    .SumAsync(saleReturn =>
+                        (decimal?)saleReturn.GrossReturnAmount) ?? 0;
+
             itemSalesValue =
-                saleItems.Sum(item => item.LineTotal);
+                Math.Round(
+                    netSaleItems.Sum(item =>
+                        item.Item.LineTotal *
+                        item.RemainingQuantity /
+                        item.Item.Quantity),
+                    2);
 
             estimatedCostOfGoods =
-                saleItems.Sum(item =>
-                    item.Quantity *
-                    (item.MedicineBatch?.PurchasePrice ?? 0));
+                Math.Round(
+                    netSaleItems.Sum(item =>
+                        item.RemainingQuantity *
+                        (item.Item.MedicineBatch?
+                            .PurchasePrice ?? 0)),
+                    2);
 
             estimatedGrossProfit =
                 Math.Round(
-                    itemSalesValue - estimatedCostOfGoods,
+                    salesRevenue -
+                    estimatedCostOfGoods,
                     2);
 
-            grossMargin = itemSalesValue == 0
+            grossMargin = salesRevenue == 0
                 ? 0
                 : Math.Round(
                     estimatedGrossProfit /
-                    itemSalesValue *
+                    salesRevenue *
                     100,
                     1);
 
@@ -503,12 +542,16 @@
             purchaseDue =
                 purchases.Sum(purchase => purchase.DueAmount);
 
-            var unitsByDate = saleItems
+            var unitsByDate = netSaleItems
                 .GroupBy(item =>
-                    item.Sale!.SoldAtUtc.ToLocalTime().Date)
+                    item.Item.Sale!
+                        .SoldAtUtc
+                        .ToLocalTime()
+                        .Date)
                 .ToDictionary(
                     group => group.Key,
-                    group => group.Sum(item => item.Quantity));
+                    group => group.Sum(item =>
+                        item.RemainingQuantity));
 
             dailySales.AddRange(
                 sales
@@ -525,14 +568,21 @@
                     .OrderByDescending(row => row.Date));
 
             topMedicines.AddRange(
-                saleItems
+                netSaleItems
                     .GroupBy(item =>
-                        $"{item.BrandName} {item.Strength}")
+                        $"{item.Item.BrandName} " +
+                        $"{item.Item.Strength}")
                     .Select(group =>
                         new TopMedicineRow(
                             group.Key,
-                            group.Sum(item => item.Quantity),
-                            group.Sum(item => item.LineTotal)))
+                            group.Sum(item =>
+                                item.RemainingQuantity),
+                            Math.Round(
+                                group.Sum(item =>
+                                    item.Item.LineTotal *
+                                    item.RemainingQuantity /
+                                    item.Item.Quantity),
+                                2)))
                     .OrderByDescending(row => row.QuantitySold)
                     .ThenByDescending(row => row.SalesValue)
                     .Take(10));
@@ -631,6 +681,10 @@
             _ => "neutral"
         };
     }
+
+    private sealed record NetSaleItem(
+        SaleItem Item,
+        int RemainingQuantity);
 
     private sealed record DailySalesRow(
         DateTime Date,
