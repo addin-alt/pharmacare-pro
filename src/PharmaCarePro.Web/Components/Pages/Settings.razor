@@ -1,66 +1,870 @@
 @page "/settings"
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.EntityFrameworkCore
+@using PharmaCarePro.Domain.Entities
+@using PharmaCarePro.Web.Data
+@inject IServiceScopeFactory ScopeFactory
 
 <PageTitle>Settings | PharmaCare Pro</PageTitle>
 
 <div class="page-heading module-heading">
     <div>
-        <span class="eyebrow">PHARMACARE PRO MODULE</span>
+        <span class="eyebrow">PHARMACY CONFIGURATION</span>
         <h1>Settings</h1>
-        <p>Configure PharmaCare Pro for your pharmacy.</p>
+        <p>
+            Configure pharmacy identity, document numbering,
+            regional preferences and operational alerts.
+        </p>
     </div>
 
-    <a class="button button-primary" href="">
+    <a class="button button-secondary" href="">
         Return to dashboard
     </a>
 </div>
 
-<section class="module-intro-card">
-    <div class="module-large-icon">⚙</div>
-
-    <div class="module-intro-content">
-        <span class="module-status">FOUNDATION READY</span>
-        <h2>Settings module</h2>
-        <p>
-            The interface foundation is ready. Database entities, forms,
-            validation and operational workflows will be implemented in
-            the next development stages.
-        </p>
-
-        <div class="module-feature-grid">
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Pharmacy and branch profile</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Invoice, currency and tax settings</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>User roles and permissions</p>
-            </div>
-            <div class="module-feature">
-                <span>✓</span>
-                <p>Stock alerts and application preferences</p>
-            </div>
-        </div>
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <div class="form-status settings-status
+         @(statusIsError ? "status-error" : "status-success")">
+        @statusMessage
     </div>
+}
+
+<section class="settings-summary-grid">
+    <article class="settings-summary-card">
+        <span>Profile status</span>
+
+        <strong>
+            @(profileId.HasValue ? "Configured" : "Not configured")
+        </strong>
+
+        <small>
+            @(profileId.HasValue
+                ? "Saved in Supabase"
+                : "Complete and save the form")
+        </small>
+    </article>
+
+    <article class="settings-summary-card">
+        <span>Currency</span>
+
+        <strong>
+            @form.CurrencySymbol @form.CurrencyCode
+        </strong>
+
+        <small>Used for pharmacy transactions</small>
+    </article>
+
+    <article class="settings-summary-card">
+        <span>Expiry warning</span>
+
+        <strong>@form.ExpiryAlertDays days</strong>
+
+        <small>
+            @(form.ExpiryAlertsEnabled
+                ? "Expiry alerts enabled"
+                : "Expiry alerts disabled")
+        </small>
+    </article>
+
+    <article class="settings-summary-card">
+        <span>Time zone</span>
+
+        <strong>@form.TimeZoneId</strong>
+
+        <small>Used for local business dates</small>
+    </article>
 </section>
 
-<section class="dashboard-panel module-next-panel">
-    <div class="panel-heading">
-        <div>
-            <h2>Next implementation stage</h2>
-            <p>This module will be connected to Supabase PostgreSQL.</p>
+<div class="settings-workspace">
+    <section class="dashboard-panel settings-form-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Pharmacy profile</h2>
+                <p>Manage the primary pharmacy and branch configuration.</p>
+            </div>
         </div>
-    </div>
 
-    <div class="module-next-steps">
-        <span>Database entities</span>
-        <span>Validation rules</span>
-        <span>Create and edit forms</span>
-        <span>Search and filtering</span>
-        <span>Role permissions</span>
-        <span>Automated tests</span>
-    </div>
-</section>
+        @if (isLoading)
+        {
+            <div class="medicine-empty-state settings-loading-state">
+                <strong>Loading pharmacy settings...</strong>
+            </div>
+        }
+        else
+        {
+            <EditForm Model="form"
+                      OnValidSubmit="SaveProfileAsync"
+                      FormName="pharmacy-settings">
+                <DataAnnotationsValidator />
+
+                <div class="settings-section">
+                    <div class="settings-section-heading">
+                        <span>1</span>
+
+                        <div>
+                            <h3>Business identity</h3>
+                            <p>
+                                Pharmacy, branch and registration details.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="settings-form-grid">
+                        <div class="form-field">
+                            <label>Pharmacy name</label>
+
+                            <InputText
+                                @bind-Value="form.PharmacyName"
+                                placeholder="PharmaCare Pro" />
+
+                            <ValidationMessage
+                                For="() => form.PharmacyName" />
+                        </div>
+
+                        <div class="form-field">
+                            <label>Branch name</label>
+
+                            <InputText
+                                @bind-Value="form.BranchName"
+                                placeholder="Main Pharmacy" />
+
+                            <ValidationMessage
+                                For="() => form.BranchName" />
+                        </div>
+
+                        <div class="form-field">
+                            <label>License number</label>
+
+                            <InputText
+                                @bind-Value="form.LicenseNumber"
+                                placeholder="Optional pharmacy license" />
+
+                            <ValidationMessage
+                                For="() => form.LicenseNumber" />
+                        </div>
+
+                        <div class="form-field">
+                            <label>Tax identification number</label>
+
+                            <InputText
+                                @bind-Value="form.TaxIdentificationNumber"
+                                placeholder="Optional tax identifier" />
+
+                            <ValidationMessage
+                                For="() => form.TaxIdentificationNumber" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <div class="settings-section-heading">
+                        <span>2</span>
+
+                        <div>
+                            <h3>Contact information</h3>
+                            <p>
+                                Details displayed on pharmacy documents.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="settings-form-grid">
+                        <div class="form-field">
+                            <label>Phone number</label>
+
+                            <InputText
+                                @bind-Value="form.Phone"
+                                placeholder="01700000000" />
+
+                            <ValidationMessage
+                                For="() => form.Phone" />
+                        </div>
+
+                        <div class="form-field">
+                            <label>Email address</label>
+
+                            <InputText
+                                @bind-Value="form.Email"
+                                placeholder="pharmacy@example.com" />
+
+                            <ValidationMessage
+                                For="() => form.Email" />
+                        </div>
+
+                        <div class="form-field settings-wide-field">
+                            <label>Business address</label>
+
+                            <InputTextArea
+                                @bind-Value="form.Address"
+                                rows="3"
+                                placeholder="Pharmacy business address" />
+
+                            <ValidationMessage
+                                For="() => form.Address" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <div class="settings-section-heading">
+                        <span>3</span>
+
+                        <div>
+                            <h3>Regional preferences</h3>
+                            <p>
+                                Currency and local business timezone.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="settings-form-grid
+                                settings-regional-grid">
+                        <div class="form-field">
+                            <label>Currency code</label>
+
+                            <InputText
+                                @bind-Value="form.CurrencyCode"
+                                maxlength="3"
+                                placeholder="BDT" />
+
+                            <ValidationMessage
+                                For="() => form.CurrencyCode" />
+                        </div>
+
+                        <div class="form-field">
+                            <label>Currency symbol</label>
+
+                            <InputText
+                                @bind-Value="form.CurrencySymbol"
+                                placeholder="৳" />
+
+                            <ValidationMessage
+                                For="() => form.CurrencySymbol" />
+                        </div>
+
+                        <div class="form-field">
+                            <label>Time zone</label>
+
+                            <InputText
+                                @bind-Value="form.TimeZoneId"
+                                placeholder="Asia/Dhaka" />
+
+                            <ValidationMessage
+                                For="() => form.TimeZoneId" />
+
+                            <small class="settings-field-note">
+                                Example: Asia/Dhaka
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <div class="settings-section-heading">
+                        <span>4</span>
+
+                        <div>
+                            <h3>Document numbering</h3>
+                            <p>
+                                Prefixes used when generating records.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="settings-form-grid
+                                settings-prefix-grid">
+                        <div class="form-field">
+                            <label>Sales invoice prefix</label>
+
+                            <InputText
+                                @bind-Value="form.InvoicePrefix"
+                                placeholder="PCP" />
+
+                            <ValidationMessage
+                                For="() => form.InvoicePrefix" />
+                        </div>
+
+                        <div class="form-field">
+                            <label>Purchase prefix</label>
+
+                            <InputText
+                                @bind-Value="form.PurchasePrefix"
+                                placeholder="PUR" />
+
+                            <ValidationMessage
+                                For="() => form.PurchasePrefix" />
+                        </div>
+
+                        <div class="form-field">
+                            <label>Prescription prefix</label>
+
+                            <InputText
+                                @bind-Value="form.PrescriptionPrefix"
+                                placeholder="RX" />
+
+                            <ValidationMessage
+                                For="() => form.PrescriptionPrefix" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <div class="settings-section-heading">
+                        <span>5</span>
+
+                        <div>
+                            <h3>Inventory alerts</h3>
+                            <p>
+                                Configure operational warning preferences.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="settings-alert-grid">
+                        <div class="form-field">
+                            <label>Expiry alert period</label>
+
+                            <InputNumber
+                                @bind-Value="form.ExpiryAlertDays"
+                                min="1"
+                                max="3650" />
+
+                            <ValidationMessage
+                                For="() => form.ExpiryAlertDays" />
+                        </div>
+
+                        <label class="settings-toggle-card">
+                            <InputCheckbox
+                                @bind-Value="
+                                    form.LowStockAlertsEnabled" />
+
+                            <span>
+                                <strong>Low-stock alerts</strong>
+                                <small>
+                                    Warn when stock reaches the medicine
+                                    reorder level.
+                                </small>
+                            </span>
+                        </label>
+
+                        <label class="settings-toggle-card">
+                            <InputCheckbox
+                                @bind-Value="
+                                    form.ExpiryAlertsEnabled" />
+
+                            <span>
+                                <strong>Expiry alerts</strong>
+                                <small>
+                                    Warn when batches approach their
+                                    expiry date.
+                                </small>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                <button class="button button-primary
+                               settings-save-button"
+                        type="submit"
+                        disabled="@isSaving">
+                    @(isSaving
+                        ? "Saving pharmacy settings..."
+                        : profileId.HasValue
+                            ? "Update pharmacy settings"
+                            : "Save pharmacy settings")
+                </button>
+            </EditForm>
+        }
+    </section>
+
+    <aside class="settings-side-column">
+        <section class="dashboard-panel settings-preview-panel">
+            <div class="panel-heading">
+                <div>
+                    <h2>Profile preview</h2>
+                    <p>Current pharmacy identity and document settings.</p>
+                </div>
+            </div>
+
+            <div class="settings-brand-preview">
+                <span class="settings-brand-icon">Rx</span>
+
+                <div>
+                    <strong>
+                        @(string.IsNullOrWhiteSpace(form.PharmacyName)
+                            ? "Pharmacy name"
+                            : form.PharmacyName)
+                    </strong>
+
+                    <small>
+                        @(string.IsNullOrWhiteSpace(form.BranchName)
+                            ? "Branch name"
+                            : form.BranchName)
+                    </small>
+                </div>
+            </div>
+
+            <div class="settings-preview-list">
+                <div>
+                    <span>Phone</span>
+                    <strong>
+                        @(form.Phone ?? "Not provided")
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Email</span>
+                    <strong>
+                        @(form.Email ?? "Not provided")
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Currency</span>
+                    <strong>
+                        @form.CurrencySymbol @form.CurrencyCode
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Time zone</span>
+                    <strong>@form.TimeZoneId</strong>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(form.Address))
+            {
+                <p class="settings-preview-address">
+                    @form.Address
+                </p>
+            }
+        </section>
+
+        <section class="dashboard-panel settings-number-panel">
+            <div class="panel-heading">
+                <div>
+                    <h2>Number examples</h2>
+                    <p>Preview generated document references.</p>
+                </div>
+            </div>
+
+            <div class="settings-number-list">
+                <div>
+                    <span>Sales invoice</span>
+                    <strong>
+                        @NormalizedInvoicePrefix-20260805-001
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Purchase receipt</span>
+                    <strong>
+                        @NormalizedPurchasePrefix-20260805-001
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Prescription</span>
+                    <strong>
+                        @NormalizedPrescriptionPrefix-20260805-001
+                    </strong>
+                </div>
+            </div>
+        </section>
+
+        <section class="dashboard-panel settings-system-panel">
+            <div class="panel-heading">
+                <div>
+                    <h2>System status</h2>
+                    <p>Configuration and database information.</p>
+                </div>
+            </div>
+
+            <div class="settings-system-list">
+                <div class="settings-system-item complete">
+                    <span>✓</span>
+
+                    <div>
+                        <strong>Supabase PostgreSQL</strong>
+                        <small>Database connection is active.</small>
+                    </div>
+                </div>
+
+                <div class="settings-system-item complete">
+                    <span>✓</span>
+
+                    <div>
+                        <strong>Database migrations</strong>
+                        <small>Pharmacy profile table is ready.</small>
+                    </div>
+                </div>
+
+                <div class="settings-system-item
+                    @(profileId.HasValue ? "complete" : string.Empty)">
+                    <span>
+                        @(profileId.HasValue ? "✓" : "3")
+                    </span>
+
+                    <div>
+                        <strong>Pharmacy profile</strong>
+                        <small>
+                            @(profileId.HasValue
+                                ? "Profile has been configured."
+                                : "Save the profile to complete setup.")
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-last-updated">
+                <span>Last updated</span>
+
+                <strong>
+                    @(updatedAtUtc.HasValue
+                        ? updatedAtUtc.Value
+                            .ToLocalTime()
+                            .ToString("dd MMM yyyy, hh:mm tt")
+                        : "Not saved yet")
+                </strong>
+            </div>
+        </section>
+    </aside>
+</div>
+
+@code {
+    private PharmacyProfileForm form = new();
+
+    private Guid? profileId;
+    private DateTime? updatedAtUtc;
+
+    private string? statusMessage;
+
+    private bool statusIsError;
+    private bool isLoading = true;
+    private bool isSaving;
+
+    private string NormalizedInvoicePrefix =>
+        NormalizePrefix(form.InvoicePrefix, "PCP");
+
+    private string NormalizedPurchasePrefix =>
+        NormalizePrefix(form.PurchasePrefix, "PUR");
+
+    private string NormalizedPrescriptionPrefix =>
+        NormalizePrefix(form.PrescriptionPrefix, "RX");
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProfileAsync();
+    }
+
+    private async Task LoadProfileAsync()
+    {
+        isLoading = true;
+
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+
+            var database = scope.ServiceProvider
+                .GetRequiredService<ApplicationDbContext>();
+
+            var profile = await database.PharmacyProfiles
+                .AsNoTracking()
+                .OrderBy(item => item.CreatedAtUtc)
+                .FirstOrDefaultAsync();
+
+            if (profile is null)
+            {
+                return;
+            }
+
+            profileId = profile.Id;
+            updatedAtUtc = profile.UpdatedAtUtc;
+
+            form = new PharmacyProfileForm
+            {
+                PharmacyName = profile.PharmacyName,
+                BranchName = profile.BranchName,
+                LicenseNumber = profile.LicenseNumber,
+                TaxIdentificationNumber =
+                    profile.TaxIdentificationNumber,
+                Phone = profile.Phone,
+                Email = profile.Email,
+                Address = profile.Address,
+                CurrencyCode = profile.CurrencyCode,
+                CurrencySymbol = profile.CurrencySymbol,
+                TimeZoneId = profile.TimeZoneId,
+                InvoicePrefix = profile.InvoicePrefix,
+                PurchasePrefix = profile.PurchasePrefix,
+                PrescriptionPrefix =
+                    profile.PrescriptionPrefix,
+                ExpiryAlertDays = profile.ExpiryAlertDays,
+                LowStockAlertsEnabled =
+                    profile.LowStockAlertsEnabled,
+                ExpiryAlertsEnabled =
+                    profile.ExpiryAlertsEnabled
+            };
+        }
+        catch (Exception exception)
+        {
+            statusIsError = true;
+            statusMessage =
+                "The pharmacy settings could not be loaded: " +
+                exception.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        isSaving = true;
+        statusIsError = false;
+        statusMessage = null;
+
+        try
+        {
+            var timeZoneId = form.TimeZoneId.Trim();
+
+            try
+            {
+                _ = TimeZoneInfo.FindSystemTimeZoneById(
+                    timeZoneId);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                statusIsError = true;
+                statusMessage =
+                    $"Time zone {timeZoneId} was not found.";
+                return;
+            }
+            catch (InvalidTimeZoneException)
+            {
+                statusIsError = true;
+                statusMessage =
+                    $"Time zone {timeZoneId} is invalid.";
+                return;
+            }
+
+            using var scope = ScopeFactory.CreateScope();
+
+            var database = scope.ServiceProvider
+                .GetRequiredService<ApplicationDbContext>();
+
+            PharmacyProfile? profile = null;
+
+            if (profileId.HasValue)
+            {
+                profile = await database.PharmacyProfiles
+                    .SingleOrDefaultAsync(item =>
+                        item.Id == profileId.Value);
+            }
+
+            profile ??= await database.PharmacyProfiles
+                .OrderBy(item => item.CreatedAtUtc)
+                .FirstOrDefaultAsync();
+
+            var now = DateTime.UtcNow;
+
+            if (profile is null)
+            {
+                profile = new PharmacyProfile
+                {
+                    CreatedAtUtc = now
+                };
+
+                database.PharmacyProfiles.Add(profile);
+            }
+
+            profile.PharmacyName =
+                form.PharmacyName.Trim();
+
+            profile.BranchName =
+                form.BranchName.Trim();
+
+            profile.LicenseNumber =
+                Normalize(form.LicenseNumber);
+
+            profile.TaxIdentificationNumber =
+                Normalize(form.TaxIdentificationNumber);
+
+            profile.Phone =
+                Normalize(form.Phone);
+
+            profile.Email =
+                Normalize(form.Email);
+
+            profile.Address =
+                Normalize(form.Address);
+
+            profile.CurrencyCode =
+                form.CurrencyCode
+                    .Trim()
+                    .ToUpperInvariant();
+
+            profile.CurrencySymbol =
+                form.CurrencySymbol.Trim();
+
+            profile.TimeZoneId = timeZoneId;
+
+            profile.InvoicePrefix =
+                NormalizedInvoicePrefix;
+
+            profile.PurchasePrefix =
+                NormalizedPurchasePrefix;
+
+            profile.PrescriptionPrefix =
+                NormalizedPrescriptionPrefix;
+
+            profile.ExpiryAlertDays =
+                form.ExpiryAlertDays;
+
+            profile.LowStockAlertsEnabled =
+                form.LowStockAlertsEnabled;
+
+            profile.ExpiryAlertsEnabled =
+                form.ExpiryAlertsEnabled;
+
+            profile.UpdatedAtUtc = now;
+
+            await database.SaveChangesAsync();
+
+            profileId = profile.Id;
+            updatedAtUtc = profile.UpdatedAtUtc;
+
+            form.CurrencyCode =
+                profile.CurrencyCode;
+
+            form.InvoicePrefix =
+                profile.InvoicePrefix;
+
+            form.PurchasePrefix =
+                profile.PurchasePrefix;
+
+            form.PrescriptionPrefix =
+                profile.PrescriptionPrefix;
+
+            statusMessage =
+                "Pharmacy settings were saved successfully.";
+        }
+        catch (DbUpdateException)
+        {
+            statusIsError = true;
+            statusMessage =
+                "The pharmacy settings could not be saved. " +
+                "Check the pharmacy and branch names and try again.";
+        }
+        catch (Exception exception)
+        {
+            statusIsError = true;
+            statusMessage =
+                "The pharmacy settings could not be saved: " +
+                exception.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private static string NormalizePrefix(
+        string? value,
+        string fallback)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? fallback
+            : value.Trim().ToUpperInvariant();
+    }
+
+    private static string? Normalize(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Trim();
+    }
+
+    private sealed class PharmacyProfileForm
+    {
+        [Required(ErrorMessage = "Pharmacy name is required.")]
+        [StringLength(150)]
+        public string PharmacyName { get; set; } =
+            "PharmaCare Pro";
+
+        [Required(ErrorMessage = "Branch name is required.")]
+        [StringLength(150)]
+        public string BranchName { get; set; } =
+            "Main Pharmacy";
+
+        [StringLength(80)]
+        public string? LicenseNumber { get; set; }
+
+        [StringLength(80)]
+        public string? TaxIdentificationNumber { get; set; }
+
+        [StringLength(30)]
+        public string? Phone { get; set; }
+
+        [EmailAddress(
+            ErrorMessage = "Enter a valid email address.")]
+        [StringLength(160)]
+        public string? Email { get; set; }
+
+        [StringLength(300)]
+        public string? Address { get; set; }
+
+        [Required]
+        [RegularExpression(
+            "^[A-Za-z]{3}$",
+            ErrorMessage =
+                "Currency code must contain three letters.")]
+        [StringLength(3)]
+        public string CurrencyCode { get; set; } = "BDT";
+
+        [Required]
+        [StringLength(8)]
+        public string CurrencySymbol { get; set; } = "৳";
+
+        [Required]
+        [StringLength(100)]
+        public string TimeZoneId { get; set; } =
+            "Asia/Dhaka";
+
+        [Required]
+        [RegularExpression(
+            "^[A-Za-z0-9-]{2,12}$",
+            ErrorMessage =
+                "Use letters, numbers and hyphens only.")]
+        [StringLength(12)]
+        public string InvoicePrefix { get; set; } = "PCP";
+
+        [Required]
+        [RegularExpression(
+            "^[A-Za-z0-9-]{2,12}$",
+            ErrorMessage =
+                "Use letters, numbers and hyphens only.")]
+        [StringLength(12)]
+        public string PurchasePrefix { get; set; } = "PUR";
+
+        [Required]
+        [RegularExpression(
+            "^[A-Za-z0-9-]{2,12}$",
+            ErrorMessage =
+                "Use letters, numbers and hyphens only.")]
+        [StringLength(12)]
+        public string PrescriptionPrefix { get; set; } = "RX";
+
+        [Range(
+            1,
+            3650,
+            ErrorMessage =
+                "Expiry alert days must be between 1 and 3650.")]
+        public int ExpiryAlertDays { get; set; } = 90;
+
+        public bool LowStockAlertsEnabled { get; set; } = true;
+
+        public bool ExpiryAlertsEnabled { get; set; } = true;
+    }
+}

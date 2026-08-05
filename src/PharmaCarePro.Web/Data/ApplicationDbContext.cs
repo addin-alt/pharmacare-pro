@@ -32,6 +32,8 @@ public class ApplicationDbContext(
 
     public DbSet<PrescriptionItem> PrescriptionItems => Set<PrescriptionItem>();
 
+    public DbSet<PharmacyProfile> PharmacyProfiles => Set<PharmacyProfile>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -458,6 +460,36 @@ public class ApplicationDbContext(
                 .WithMany()
                 .HasForeignKey(item => item.MedicineId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<PharmacyProfile>(entity =>
+        {
+            entity.ToTable(
+                "PharmacyProfiles",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_PharmacyProfiles_ExpiryAlertDays",
+                        "\"ExpiryAlertDays\" >= 1");
+                });
+
+            entity.HasKey(profile => profile.Id);
+
+            entity.HasIndex(profile => new
+                {
+                    profile.PharmacyName,
+                    profile.BranchName
+                })
+                .IsUnique();
+
+            entity.Property(profile => profile.CurrencyCode)
+                .HasMaxLength(3);
+
+            entity.Property(profile => profile.CurrencySymbol)
+                .HasMaxLength(8);
+
+            entity.Property(profile => profile.TimeZoneId)
+                .HasMaxLength(100);
         });
 
     }
