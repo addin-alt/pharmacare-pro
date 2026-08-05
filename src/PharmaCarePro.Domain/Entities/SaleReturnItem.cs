@@ -63,9 +63,12 @@ public sealed class SaleReturnItem : IValidatableObject
                 2,
                 MidpointRounding.AwayFromZero);
 
+        var roundingTolerance =
+            Math.Max(0.01m, Quantity * 0.01m);
+
         if (Math.Abs(
                 expectedLineAmount - LineRefundAmount) >
-            0.01m)
+            roundingTolerance)
         {
             yield return new ValidationResult(
                 "The return line amount does not match its quantity.",

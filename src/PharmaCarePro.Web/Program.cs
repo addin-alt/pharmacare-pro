@@ -6,6 +6,7 @@ using PharmaCarePro.Web.Components.Account;
 using PharmaCarePro.Web.Data;
 using PharmaCarePro.Web.Services.Email;
 using PharmaCarePro.Web.Services.Payments;
+using PharmaCarePro.Web.Services.Returns;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -71,6 +72,7 @@ builder.Services.AddSingleton<
     SmtpIdentityEmailSender>();
 
 builder.Services.AddScoped<AccountPaymentService>();
+builder.Services.AddScoped<SaleReturnService>();
 
 var app = builder.Build();
 
