@@ -1,40 +1,123 @@
-﻿@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Identity
 @using PharmaCarePro.Web.Data
 
 @inject SignInManager<ApplicationUser> SignInManager
 
-<ul class="nav nav-pills flex-column">
-    <li class="nav-item">
-        <NavLink class="nav-link" href="Account/Manage" Match="NavLinkMatch.All">Profile</NavLink>
-    </li>
-    <li class="nav-item">
-        <NavLink class="nav-link" href="Account/Manage/Email">Email</NavLink>
-    </li>
-    <li class="nav-item">
-        <NavLink class="nav-link" href="Account/Manage/ChangePassword">Password</NavLink>
-    </li>
+<nav class="account-settings-nav">
+    <NavLink class="account-settings-link"
+             href="Account/Manage"
+             Match="NavLinkMatch.All">
+        <span class="account-settings-icon">♙</span>
+
+        <span>
+            <strong>Profile</strong>
+            <small>Phone and account identity</small>
+        </span>
+
+        <i>›</i>
+    </NavLink>
+
+    <NavLink class="account-settings-link"
+             href="Account/Manage/Email">
+        <span class="account-settings-icon">@@</span>
+
+        <span>
+            <strong>Email address</strong>
+            <small>Manage your sign-in email</small>
+        </span>
+
+        <i>›</i>
+    </NavLink>
+
+    <NavLink class="account-settings-link"
+             href="Account/Manage/ChangePassword">
+        <span class="account-settings-icon">●</span>
+
+        <span>
+            <strong>Password</strong>
+            <small>Update your secure password</small>
+        </span>
+
+        <i>›</i>
+    </NavLink>
+
     @if (hasExternalLogins)
     {
-        <li class="nav-item">
-            <NavLink class="nav-link" href="Account/Manage/ExternalLogins">External logins</NavLink>
-        </li>
+        <NavLink class="account-settings-link"
+                 href="Account/Manage/ExternalLogins">
+            <span class="account-settings-icon">↗</span>
+
+            <span>
+                <strong>External logins</strong>
+                <small>Connected sign-in providers</small>
+            </span>
+
+            <i>›</i>
+        </NavLink>
     }
-    <li class="nav-item">
-        <NavLink class="nav-link" href="Account/Manage/TwoFactorAuthentication">Two-factor authentication</NavLink>
-    </li>
-    <li class="nav-item">
-        <NavLink class="nav-link" href="Account/Manage/Passkeys">Passkeys</NavLink>
-    </li>
-    <li class="nav-item">
-        <NavLink class="nav-link" href="Account/Manage/PersonalData">Personal data</NavLink>
-    </li>
-</ul>
+
+    <NavLink class="account-settings-link"
+             href="Account/Manage/TwoFactorAuthentication">
+        <span class="account-settings-icon">✓</span>
+
+        <span>
+            <strong>Two-factor authentication</strong>
+            <small>Add another security layer</small>
+        </span>
+
+        <i>›</i>
+    </NavLink>
+
+    <NavLink class="account-settings-link"
+             href="Account/Manage/Passkeys">
+        <span class="account-settings-icon">⌾</span>
+
+        <span>
+            <strong>Passkeys</strong>
+            <small>Password-free authentication</small>
+        </span>
+
+        <i>›</i>
+    </NavLink>
+
+    <NavLink class="account-settings-link"
+             href="Account/Manage/PersonalData">
+        <span class="account-settings-icon">▤</span>
+
+        <span>
+            <strong>Personal data</strong>
+            <small>Download or remove account data</small>
+        </span>
+
+        <i>›</i>
+    </NavLink>
+</nav>
+
+<div class="account-security-card">
+    <span class="account-security-icon">✓</span>
+
+    <div>
+        <strong>Secure owner account</strong>
+
+        <small>
+            Pharmacy information is available only after authentication.
+        </small>
+    </div>
+</div>
+
+<a class="account-dashboard-link" href="/">
+    <span>←</span>
+    Back to dashboard
+</a>
 
 @code {
     private bool hasExternalLogins;
 
     protected override async Task OnInitializedAsync()
     {
-        hasExternalLogins = (await SignInManager.GetExternalAuthenticationSchemesAsync()).Any();
+        hasExternalLogins =
+            (await SignInManager
+                .GetExternalAuthenticationSchemesAsync())
+            .Any();
     }
 }

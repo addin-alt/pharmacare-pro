@@ -1,4 +1,4 @@
-﻿@page "/Account/Manage"
+@page "/Account/Manage"
 
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.AspNetCore.Identity
@@ -8,83 +8,321 @@
 @inject SignInManager<ApplicationUser> SignInManager
 @inject IdentityRedirectManager RedirectManager
 
-<PageTitle>Profile</PageTitle>
+<PageTitle>Profile | PharmaCare Pro</PageTitle>
 
-<h3>Profile</h3>
+<div class="account-section-heading">
+    <div>
+        <span>OWNER PROFILE</span>
+
+        <h2>Personal profile</h2>
+
+        <p>
+            Review your account identity and maintain
+            your contact phone number.
+        </p>
+    </div>
+
+    <span class="account-owner-badge">
+        Owner
+    </span>
+</div>
+
 <StatusMessage />
 
-<div class="row">
-    <div class="col-xl-6">
-        <EditForm Model="Input" FormName="profile" OnValidSubmit="OnValidSubmitAsync" method="post">
-            <DataAnnotationsValidator />
-            <ValidationSummary class="text-danger" role="alert" />
-            <div class="form-floating mb-3">
-                <input type="text" value="@username" id="username" class="form-control" placeholder="Choose your username." disabled />
-                <label for="username" class="form-label">Username</label>
-            </div>
-            <div class="form-floating mb-3">
-                <InputText @bind-Value="Input.PhoneNumber" id="Input.PhoneNumber" class="form-control" placeholder="Enter your phone number" />
-                <label for="Input.PhoneNumber" class="form-label">Phone number</label>
-                <ValidationMessage For="() => Input.PhoneNumber" class="text-danger" />
-            </div>
-            <button type="submit" class="w-100 btn btn-lg btn-primary">Save</button>
-        </EditForm>
+<div class="account-profile-overview">
+    <div class="account-profile-avatar">
+        @accountInitial
     </div>
+
+    <div class="account-profile-identity">
+        <span>PRIMARY PHARMACY ACCOUNT</span>
+
+        <strong>@displayName</strong>
+
+        <small>@username</small>
+    </div>
+
+    <div class="account-profile-state">
+        <span>
+            <i></i>
+            Active
+        </span>
+    </div>
+</div>
+
+<div class="account-profile-layout">
+    <EditForm Model="Input"
+              FormName="profile"
+              OnValidSubmit="OnValidSubmitAsync"
+              method="post"
+              class="account-profile-form">
+        <DataAnnotationsValidator />
+
+        <ValidationSummary class="account-validation-summary"
+                           role="alert" />
+
+        <div class="account-form-section">
+            <div class="account-form-section-heading">
+                <span>1</span>
+
+                <div>
+                    <strong>Account identity</strong>
+
+                    <small>
+                        Your sign-in identity cannot be changed here.
+                    </small>
+                </div>
+            </div>
+
+            <div class="account-field">
+                <label for="username">
+                    Email and username
+                </label>
+
+                <div class="account-input-shell
+                            account-input-readonly">
+                    <span>@@</span>
+
+                    <input type="text"
+                           value="@username"
+                           id="username"
+                           placeholder="Account email"
+                           disabled />
+
+                    <i>Verified account</i>
+                </div>
+            </div>
+        </div>
+
+        <div class="account-form-section">
+            <div class="account-form-section-heading">
+                <span>2</span>
+
+                <div>
+                    <strong>Contact information</strong>
+
+                    <small>
+                        Add a phone number for your owner profile.
+                    </small>
+                </div>
+            </div>
+
+            <div class="account-field">
+                <label for="Input.PhoneNumber">
+                    Phone number
+                </label>
+
+                <div class="account-input-shell">
+                    <span>☎</span>
+
+                    <InputText
+                        @bind-Value="Input.PhoneNumber"
+                        id="Input.PhoneNumber"
+                        placeholder="01700000000" />
+                </div>
+
+                <ValidationMessage
+                    For="() => Input.PhoneNumber"
+                    class="account-field-error" />
+
+                <small class="account-field-note">
+                    Include the country or local dialing format
+                    used by your pharmacy.
+                </small>
+            </div>
+        </div>
+
+        <button type="submit"
+                class="account-save-button">
+            <span>Save profile changes</span>
+            <strong>→</strong>
+        </button>
+    </EditForm>
+
+    <aside class="account-profile-aside">
+        <article class="account-profile-info-card">
+            <span class="account-profile-info-icon">
+                ✓
+            </span>
+
+            <div>
+                <strong>Authenticated access</strong>
+
+                <small>
+                    This account can access protected pharmacy
+                    business information.
+                </small>
+            </div>
+        </article>
+
+        <article class="account-profile-info-card">
+            <span class="account-profile-info-icon">
+                ●
+            </span>
+
+            <div>
+                <strong>Password protection</strong>
+
+                <small>
+                    Passwords require uppercase, lowercase,
+                    number and symbol characters.
+                </small>
+            </div>
+        </article>
+
+        <article class="account-profile-info-card">
+            <span class="account-profile-info-icon">
+                ⌾
+            </span>
+
+            <div>
+                <strong>Additional security</strong>
+
+                <small>
+                    Passkeys and two-factor authentication can
+                    be configured from the account menu.
+                </small>
+            </div>
+        </article>
+
+        <a class="account-security-action"
+           href="Account/Manage/ChangePassword">
+            <span>●</span>
+
+            <div>
+                <strong>Change password</strong>
+                <small>Review password security</small>
+            </div>
+
+            <i>›</i>
+        </a>
+    </aside>
 </div>
 
 @code {
     private ApplicationUser? user;
-    private string? username;
-    private string? phoneNumber;
+
+    private string username = "Owner account";
+    private string phoneNumber = string.Empty;
+    private string displayName = "Owner";
+    private string accountInitial = "O";
 
     [CascadingParameter]
-    private HttpContext HttpContext { get; set; } = default!;
+    private HttpContext HttpContext { get; set; } =
+        default!;
 
     [SupplyParameterFromForm]
-    private InputModel Input { get; set; } = default!;
+    private InputModel Input { get; set; } =
+        default!;
 
     protected override async Task OnInitializedAsync()
     {
         Input ??= new();
 
-        user = await UserManager.GetUserAsync(HttpContext.User);
+        user =
+            await UserManager.GetUserAsync(
+                HttpContext.User);
+
         if (user is null)
         {
-            RedirectManager.RedirectToInvalidUser(UserManager, HttpContext);
+            RedirectManager.RedirectToInvalidUser(
+                UserManager,
+                HttpContext);
+
             return;
         }
 
-        username = await UserManager.GetUserNameAsync(user);
-        phoneNumber = await UserManager.GetPhoneNumberAsync(user);
+        username =
+            await UserManager.GetUserNameAsync(user) ??
+            "Owner account";
+
+        phoneNumber =
+            await UserManager.GetPhoneNumberAsync(user) ??
+            string.Empty;
 
         Input.PhoneNumber ??= phoneNumber;
+
+        displayName = FormatDisplayName(username);
+
+        accountInitial =
+            displayName[0]
+                .ToString()
+                .ToUpperInvariant();
     }
 
     private async Task OnValidSubmitAsync()
     {
         if (user is null)
         {
-            RedirectManager.RedirectToInvalidUser(UserManager, HttpContext);
+            RedirectManager.RedirectToInvalidUser(
+                UserManager,
+                HttpContext);
+
             return;
         }
 
         if (Input.PhoneNumber != phoneNumber)
         {
-            var setPhoneResult = await UserManager.SetPhoneNumberAsync(user, Input.PhoneNumber);
-            if (!setPhoneResult.Succeeded)
+            var result =
+                await UserManager.SetPhoneNumberAsync(
+                    user,
+                    Input.PhoneNumber);
+
+            if (!result.Succeeded)
             {
-                RedirectManager.RedirectToCurrentPageWithStatus("Error: Failed to set phone number.", HttpContext);
+                RedirectManager
+                    .RedirectToCurrentPageWithStatus(
+                        "Error: The phone number could not be saved.",
+                        HttpContext);
+
                 return;
             }
         }
 
         await SignInManager.RefreshSignInAsync(user);
-        RedirectManager.RedirectToCurrentPageWithStatus("Your profile has been updated", HttpContext);
+
+        RedirectManager.RedirectToCurrentPageWithStatus(
+            "Your profile was updated successfully.",
+            HttpContext);
+    }
+
+    private static string FormatDisplayName(
+        string identityName)
+    {
+        var localPart =
+            identityName.Split('@', 2)[0];
+
+        var firstSegment =
+            localPart.Split(
+                    new[] { '.', '_', '-' },
+                    StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault() ?? localPart;
+
+        var lettersOnly =
+            new string(
+                firstSegment
+                    .TakeWhile(char.IsLetter)
+                    .ToArray());
+
+        var result =
+            string.IsNullOrWhiteSpace(lettersOnly)
+                ? firstSegment
+                : lettersOnly;
+
+        if (string.IsNullOrWhiteSpace(result))
+        {
+            return "Owner";
+        }
+
+        return char.ToUpperInvariant(result[0]) +
+            result[1..].ToLowerInvariant();
     }
 
     private sealed class InputModel
     {
-        [Phone]
+        [Phone(
+            ErrorMessage =
+                "Enter a valid phone number.")]
         [Display(Name = "Phone number")]
         public string? PhoneNumber { get; set; }
     }

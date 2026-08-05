@@ -1,61 +1,251 @@
-﻿@page "/Account/Register"
+@page "/Account/Register"
 
 @using System.ComponentModel.DataAnnotations
-@using System.Text
-@using System.Text.Encodings.Web
 @using Microsoft.AspNetCore.Identity
-@using Microsoft.AspNetCore.WebUtilities
+@using Microsoft.EntityFrameworkCore
 @using PharmaCarePro.Web.Data
 
 @inject UserManager<ApplicationUser> UserManager
 @inject IUserStore<ApplicationUser> UserStore
 @inject SignInManager<ApplicationUser> SignInManager
-@inject IEmailSender<ApplicationUser> EmailSender
 @inject ILogger<Register> Logger
 @inject NavigationManager NavigationManager
 @inject IdentityRedirectManager RedirectManager
 
-<PageTitle>Register</PageTitle>
+<PageTitle>Owner account setup | PharmaCare Pro</PageTitle>
 
-<h1>Register</h1>
+@if (registrationClosed)
+{
+    <div class="auth-closed-state">
+        <span class="auth-closed-icon">✓</span>
 
-<div class="row">
-    <div class="col-lg-6">
-        <StatusMessage Message="@Message" />
-        <EditForm Model="Input" method="post" OnValidSubmit="RegisterUser" FormName="register">
-            <DataAnnotationsValidator />
-            <h2>Create a new account.</h2>
-            <hr />
-            <ValidationSummary class="text-danger" role="alert" />
-            <div class="form-floating mb-3">
-                <InputText @bind-Value="Input.Email" id="Input.Email" class="form-control" autocomplete="username" aria-required="true" placeholder="name@example.com" />
-                <label for="Input.Email">Email</label>
-                <ValidationMessage For="() => Input.Email" class="text-danger" />
+        <span class="auth-form-kicker">REGISTRATION SECURED</span>
+
+        <h1>Owner account configured</h1>
+
+        <p>
+            The first pharmacy owner account has already been created.
+            Public registration is now disabled to protect the system.
+        </p>
+
+        <div class="auth-closed-details">
+            <div>
+                <span>✓</span>
+                Pharmacy workspace protected
             </div>
-            <div class="form-floating mb-3">
-                <InputText type="password" @bind-Value="Input.Password" id="Input.Password" class="form-control" autocomplete="new-password" aria-required="true" placeholder="password" />
-                <label for="Input.Password">Password</label>
-                <ValidationMessage For="() => Input.Password" class="text-danger" />
+
+            <div>
+                <span>✓</span>
+                Public registration closed
             </div>
-            <div class="form-floating mb-3">
-                <InputText type="password" @bind-Value="Input.ConfirmPassword" id="Input.ConfirmPassword" class="form-control" autocomplete="new-password" aria-required="true" placeholder="password" />
-                <label for="Input.ConfirmPassword">Confirm Password</label>
-                <ValidationMessage For="() => Input.ConfirmPassword" class="text-danger" />
+
+            <div>
+                <span>✓</span>
+                Existing owner sign-in required
             </div>
-            <button type="submit" class="w-100 btn btn-lg btn-primary">Register</button>
-        </EditForm>
+        </div>
+
+        <a class="auth-primary-button"
+           href="/Account/Login">
+            <span>Go to secure sign in</span>
+            <strong>→</strong>
+        </a>
+
+        <a class="auth-ghost-button auth-full-button"
+           href="/">
+            <span>←</span>
+            Back to pharmacy
+        </a>
     </div>
-    <div class="col-lg-4 col-lg-offset-2">
-        <section>
-            <h3>Use another service to register.</h3>
-            <hr />
-            <ExternalLoginPicker />
-        </section>
+}
+else
+{
+    <div class="auth-form-header">
+        <span class="auth-form-kicker">OWNER ACCOUNT SETUP</span>
+
+        <h1>Create secure access</h1>
+
+        <p>
+            Create the first owner account for this pharmacy workspace.
+        </p>
     </div>
-</div>
+
+    <StatusMessage Message="@Message" />
+
+    <EditForm Model="Input"
+              method="post"
+              OnValidSubmit="RegisterUser"
+              FormName="register"
+              class="auth-form">
+        <DataAnnotationsValidator />
+
+        <ValidationSummary class="auth-validation-summary"
+                           role="alert" />
+
+        <div class="auth-registration-notice">
+            <span>1</span>
+
+            <p>
+                Only the first owner account can be registered publicly.
+                Registration closes automatically after completion.
+            </p>
+        </div>
+
+        <div class="auth-field">
+            <label for="register-email">Owner email address</label>
+
+            <div class="auth-input-shell">
+                <span class="auth-input-icon">@@</span>
+
+                <InputText @bind-Value="Input.Email"
+                           id="register-email"
+                           class="auth-input"
+                           autocomplete="username"
+                           aria-required="true"
+                           placeholder="owner@pharmacy.com" />
+            </div>
+
+            <ValidationMessage For="() => Input.Email"
+                               class="auth-field-error" />
+        </div>
+
+        <div class="auth-field">
+            <div class="auth-label-row">
+                <label for="register-password">
+                    Create password
+                </label>
+
+                <span>Minimum 10 characters</span>
+            </div>
+
+            <div class="auth-input-shell auth-password-shell">
+                <span class="auth-input-icon">●</span>
+
+                <InputText type="password"
+                           @bind-Value="Input.Password"
+                           id="register-password"
+                           class="auth-input"
+                           autocomplete="new-password"
+                           aria-required="true"
+                           placeholder="Create a strong password"
+                           data-auth-password />
+
+                <button class="auth-password-toggle"
+                        type="button"
+                        data-password-toggle
+                        data-target="register-password"
+                        aria-label="Show or hide password"
+                        aria-pressed="false">
+                    <span data-toggle-label>Show</span>
+                </button>
+            </div>
+
+            <ValidationMessage For="() => Input.Password"
+                               class="auth-field-error" />
+        </div>
+
+        <div class="auth-password-guide"
+             data-password-checklist="register-password">
+            <div class="auth-strength-row">
+                <span>Password strength</span>
+
+                <strong data-strength-label>
+                    Start typing
+                </strong>
+            </div>
+
+            <div class="auth-strength-track">
+                <span data-password-strength></span>
+            </div>
+
+            <div class="auth-requirement-grid">
+                <span data-rule="length">
+                    <i>✓</i>
+                    At least 10 characters
+                </span>
+
+                <span data-rule="upper">
+                    <i>✓</i>
+                    One uppercase letter
+                </span>
+
+                <span data-rule="lower">
+                    <i>✓</i>
+                    One lowercase letter
+                </span>
+
+                <span data-rule="number">
+                    <i>✓</i>
+                    One number
+                </span>
+
+                <span data-rule="symbol">
+                    <i>✓</i>
+                    One symbol
+                </span>
+            </div>
+        </div>
+
+        <div class="auth-field">
+            <label for="register-confirm-password">
+                Confirm password
+            </label>
+
+            <div class="auth-input-shell auth-password-shell">
+                <span class="auth-input-icon">●</span>
+
+                <InputText type="password"
+                           @bind-Value="Input.ConfirmPassword"
+                           id="register-confirm-password"
+                           class="auth-input"
+                           autocomplete="new-password"
+                           aria-required="true"
+                           placeholder="Type the password again"
+                           data-confirm-password />
+
+                <button class="auth-password-toggle"
+                        type="button"
+                        data-password-toggle
+                        data-target="register-confirm-password"
+                        aria-label="Show or hide password confirmation"
+                        aria-pressed="false">
+                    <span data-toggle-label>Show</span>
+                </button>
+            </div>
+
+            <ValidationMessage
+                For="() => Input.ConfirmPassword"
+                class="auth-field-error" />
+        </div>
+
+        <div class="auth-password-match"
+             data-password-match
+             data-password-source="register-password"
+             data-confirm-source="register-confirm-password">
+            <span>✓</span>
+            <p>Passwords match</p>
+        </div>
+
+        <button type="submit"
+                class="auth-primary-button">
+            <span>Create owner account</span>
+            <strong>→</strong>
+        </button>
+
+        <div class="auth-action-grid auth-single-action">
+            <a class="auth-outline-button"
+               href="/Account/Login">
+                <span>←</span>
+                Already registered? Sign in
+            </a>
+        </div>
+    </EditForm>
+}
 
 @code {
     private IEnumerable<IdentityError>? identityErrors;
+
+    private bool registrationClosed;
 
     [SupplyParameterFromForm]
     private InputModel Input { get; set; } = default!;
@@ -63,21 +253,59 @@
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
 
-    private string? Message => identityErrors is null ? null : $"Error: {string.Join(", ", identityErrors.Select(error => error.Description))}";
+    private string? Message =>
+        identityErrors is null
+            ? null
+            : $"Error: {string.Join(
+                ", ",
+                identityErrors.Select(
+                    error => error.Description))}";
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         Input ??= new();
+
+        registrationClosed =
+            await UserManager.Users.AnyAsync();
     }
 
-    public async Task RegisterUser(EditContext editContext)
+    public async Task RegisterUser(
+        EditContext editContext)
     {
+        if (await UserManager.Users.AnyAsync())
+        {
+            registrationClosed = true;
+
+            identityErrors =
+            [
+                new IdentityError
+                {
+                    Description =
+                        "The pharmacy owner account has already been created."
+                }
+            ];
+
+            return;
+        }
+
         var user = CreateUser();
 
-        await UserStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
+        await UserStore.SetUserNameAsync(
+            user,
+            Input.Email,
+            CancellationToken.None);
+
         var emailStore = GetEmailStore();
-        await emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
-        var result = await UserManager.CreateAsync(user, Input.Password);
+
+        await emailStore.SetEmailAsync(
+            user,
+            Input.Email,
+            CancellationToken.None);
+
+        var result =
+            await UserManager.CreateAsync(
+                user,
+                Input.Password);
 
         if (!result.Succeeded)
         {
@@ -85,68 +313,71 @@
             return;
         }
 
-        Logger.LogInformation("User created a new account with password.");
+        Logger.LogInformation(
+            "The pharmacy owner account was created.");
 
-        var userId = await UserManager.GetUserIdAsync(user);
-        var code = await UserManager.GenerateEmailConfirmationTokenAsync(user);
-        code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-        var callbackUrl = NavigationManager.GetUriWithQueryParameters(
-            NavigationManager.ToAbsoluteUri("Account/ConfirmEmail").AbsoluteUri,
-            new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code, ["returnUrl"] = ReturnUrl });
+        await SignInManager.SignInAsync(
+            user,
+            isPersistent: false);
 
-        await EmailSender.SendConfirmationLinkAsync(user, Input.Email, HtmlEncoder.Default.Encode(callbackUrl));
-
-        if (UserManager.Options.SignIn.RequireConfirmedAccount)
-        {
-            RedirectManager.RedirectTo(
-                "Account/RegisterConfirmation",
-                new() { ["email"] = Input.Email, ["returnUrl"] = ReturnUrl });
-        }
-        else
-        {
-            await SignInManager.SignInAsync(user, isPersistent: false);
-            RedirectManager.RedirectTo(ReturnUrl);
-        }
+        RedirectManager.RedirectTo(ReturnUrl);
     }
 
-    private ApplicationUser CreateUser()
+    private static ApplicationUser CreateUser()
     {
         try
         {
-            return Activator.CreateInstance<ApplicationUser>();
+            return Activator
+                .CreateInstance<ApplicationUser>();
         }
         catch
         {
-            throw new InvalidOperationException($"Can't create an instance of '{nameof(ApplicationUser)}'. " +
-                $"Ensure that '{nameof(ApplicationUser)}' is not an abstract class and has a parameterless constructor.");
+            throw new InvalidOperationException(
+                $"Cannot create an instance of " +
+                $"'{nameof(ApplicationUser)}'.");
         }
     }
 
-    private IUserEmailStore<ApplicationUser> GetEmailStore()
+    private IUserEmailStore<ApplicationUser>
+        GetEmailStore()
     {
         if (!UserManager.SupportsUserEmail)
         {
-            throw new NotSupportedException("The default UI requires a user store with email support.");
+            throw new NotSupportedException(
+                "The user store must support email addresses.");
         }
+
         return (IUserEmailStore<ApplicationUser>)UserStore;
     }
 
     private sealed class InputModel
     {
-        [Required]
-        [EmailAddress]
+        [Required(ErrorMessage = "Email address is required.")]
+        [EmailAddress(
+            ErrorMessage =
+                "Enter a valid email address.")]
         [Display(Name = "Email")]
-        public string Email { get; set; } = "";
+        public string Email { get; set; } =
+            string.Empty;
 
-        [Required]
-        [StringLength(100, ErrorMessage = "The {0} must be at least {2} and at max {1} characters long.", MinimumLength = 6)]
+        [Required(ErrorMessage = "Password is required.")]
+        [StringLength(
+            100,
+            ErrorMessage =
+                "The password must contain between {2} and {1} characters.",
+            MinimumLength = 10)]
         [DataType(DataType.Password)]
         [Display(Name = "Password")]
-        public string Password { get; set; } = "";
+        public string Password { get; set; } =
+            string.Empty;
 
         [DataType(DataType.Password)]
         [Display(Name = "Confirm password")]
-        [Compare("Password", ErrorMessage = "The password and confirmation password do not match.")]
-        public string ConfirmPassword { get; set; } = "";
+        [Compare(
+            nameof(Password),
+            ErrorMessage =
+                "The passwords do not match.")]
+        public string ConfirmPassword { get; set; } =
+            string.Empty;
     }
 }

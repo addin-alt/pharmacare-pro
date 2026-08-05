@@ -1,17 +1,137 @@
-﻿@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Authorization
+@inherits LayoutComponentBase
 @layout PharmaCarePro.Web.Components.Layout.MainLayout
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
-<h1>Manage your account</h1>
+<div class="account-center-page">
+    <div class="account-center-heading">
+        <div>
+            <span class="eyebrow">ACCOUNT & SECURITY</span>
 
-<div>
-    <h2>Change your account settings</h2>
-    <hr />
-    <div class="row">
-        <div class="col-lg-3">
+            <h1>Account center</h1>
+
+            <p>
+                Manage your owner profile, password, authentication
+                methods and personal account data.
+            </p>
+        </div>
+
+        <a class="button button-secondary"
+           href="/">
+            <span>←</span>
+            Return to dashboard
+        </a>
+    </div>
+
+    <section class="account-identity-banner">
+        <div class="account-identity-main">
+            <span class="account-identity-avatar">
+                @accountInitial
+            </span>
+
+            <div>
+                <span class="account-identity-label">
+                    PHARMACY OWNER
+                </span>
+
+                <strong>@accountDisplayName</strong>
+
+                <small>@accountEmail</small>
+            </div>
+        </div>
+
+        <div class="account-identity-statuses">
+            <span>
+                <i></i>
+                Signed in
+            </span>
+
+            <span>
+                <i></i>
+                Protected workspace
+            </span>
+        </div>
+    </section>
+
+    <div class="account-manage-grid">
+        <aside class="account-manage-sidebar">
+            <div class="account-sidebar-heading">
+                <span>SETTINGS</span>
+
+                <strong>Manage account</strong>
+
+                <small>
+                    Select a category to update your account.
+                </small>
+            </div>
+
             <ManageNavMenu />
-        </div>
-        <div class="col-lg-9">
+        </aside>
+
+        <section class="account-manage-content">
             @Body
-        </div>
+        </section>
     </div>
 </div>
+
+@code {
+    private string accountEmail = "Owner account";
+    private string accountDisplayName = "Owner";
+    private string accountInitial = "O";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authenticationState =
+            await AuthenticationStateProvider
+                .GetAuthenticationStateAsync();
+
+        var identityName =
+            authenticationState.User.Identity?.Name;
+
+        if (string.IsNullOrWhiteSpace(identityName))
+        {
+            return;
+        }
+
+        accountEmail = identityName;
+        accountDisplayName =
+            FormatDisplayName(identityName);
+
+        accountInitial =
+            accountDisplayName[0]
+                .ToString()
+                .ToUpperInvariant();
+    }
+
+    private static string FormatDisplayName(
+        string identityName)
+    {
+        var localPart =
+            identityName.Split('@', 2)[0];
+
+        var firstSegment =
+            localPart.Split(
+                    new[] { '.', '_', '-' },
+                    StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault() ?? localPart;
+
+        var lettersOnly =
+            new string(
+                firstSegment
+                    .TakeWhile(char.IsLetter)
+                    .ToArray());
+
+        var result =
+            string.IsNullOrWhiteSpace(lettersOnly)
+                ? firstSegment
+                : lettersOnly;
+
+        if (string.IsNullOrWhiteSpace(result))
+        {
+            return "Owner";
+        }
+
+        return char.ToUpperInvariant(result[0]) +
+            result[1..].ToLowerInvariant();
+    }
+}

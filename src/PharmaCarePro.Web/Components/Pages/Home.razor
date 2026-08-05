@@ -1,15 +1,17 @@
 @page "/"
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using PharmaCarePro.Domain.Entities
 @using PharmaCarePro.Web.Data
 @inject IServiceScopeFactory ScopeFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Dashboard | PharmaCare Pro</PageTitle>
 
 <div class="page-heading">
     <div>
         <span class="eyebrow">@dashboardDateText</span>
-        <h1>@greetingText, Addin</h1>
+        <h1>@greetingText, @displayName</h1>
         <p>Here is the live operational overview of your pharmacy.</p>
     </div>
 
@@ -453,6 +455,8 @@
 
     private string greetingText = "Welcome";
 
+    private string displayName = "Owner";
+
     private string? loadError;
 
     private decimal todaySalesValue;
@@ -499,6 +503,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadDisplayNameAsync();
         SetGreeting();
 
         try
@@ -639,14 +644,63 @@
         }
     }
 
+    private async Task LoadDisplayNameAsync()
+    {
+        var authenticationState =
+            await AuthenticationStateProvider
+                .GetAuthenticationStateAsync();
+
+        var identityName =
+            authenticationState.User.Identity?.Name;
+
+        displayName =
+            FormatDisplayName(identityName);
+    }
+
+    private static string FormatDisplayName(
+        string? identityName)
+    {
+        if (string.IsNullOrWhiteSpace(identityName))
+        {
+            return "Owner";
+        }
+
+        var localPart =
+            identityName.Split('@', 2)[0];
+
+        var firstSegment =
+            localPart.Split(
+                    new[] { '.', '_', '-' },
+                    StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault() ?? localPart;
+
+        var lettersOnly =
+            new string(
+                firstSegment
+                    .TakeWhile(char.IsLetter)
+                    .ToArray());
+
+        var cleanedName =
+            string.IsNullOrWhiteSpace(lettersOnly)
+                ? firstSegment
+                : lettersOnly;
+
+        if (string.IsNullOrWhiteSpace(cleanedName))
+        {
+            return "Owner";
+        }
+
+        return char.ToUpperInvariant(cleanedName[0]) +
+            cleanedName[1..].ToLowerInvariant();
+    }
+
     private void SetGreeting()
     {
         greetingText = DateTime.Now.Hour switch
         {
             < 12 => "Good morning",
             < 17 => "Good afternoon",
-            < 22 => "Good evening",
-            _ => "Good night"
+            _ => "Good evening"
         };
     }
 
