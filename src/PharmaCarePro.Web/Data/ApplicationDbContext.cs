@@ -209,6 +209,7 @@ public class ApplicationDbContext(
             entity.HasIndex(item => item.MedicineId);
             entity.HasIndex(item => item.MedicineBatchId);
 
+            entity.Property(item => item.UnitCost).HasPrecision(18, 2);
             entity.Property(item => item.UnitPrice).HasPrecision(18, 2);
             entity.Property(item => item.DiscountAmount).HasPrecision(18, 2);
             entity.Property(item => item.LineTotal).HasPrecision(18, 2);

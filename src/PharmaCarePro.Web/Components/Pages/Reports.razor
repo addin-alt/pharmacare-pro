@@ -129,8 +129,8 @@
 
         <p class="report-method-note">
             Net sales, sold quantities and estimated cost of goods exclude
-            recorded sales returns. Cost uses each sold batch's recorded
-            purchase price.
+            recorded sales returns. Cost uses the purchase price captured
+            permanently when each item was sold.
         </p>
     </section>
 
@@ -457,7 +457,6 @@
             var saleItems = await database.SaleItems
                 .AsNoTracking()
                 .Include(item => item.Sale)
-                .Include(item => item.MedicineBatch)
                 .Include(item => item.ReturnItems)
                 .Where(item =>
                     item.Sale != null &&
@@ -519,8 +518,7 @@
                 Math.Round(
                     netSaleItems.Sum(item =>
                         item.RemainingQuantity *
-                        (item.Item.MedicineBatch?
-                            .PurchasePrice ?? 0)),
+                        item.Item.UnitCost),
                     2);
 
             estimatedGrossProfit =

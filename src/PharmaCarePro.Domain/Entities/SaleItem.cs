@@ -38,6 +38,9 @@ public sealed class SaleItem
     public int Quantity { get; set; }
 
     [Range(typeof(decimal), "0", "999999999")]
+    public decimal UnitCost { get; set; }
+
+    [Range(typeof(decimal), "0", "999999999")]
     public decimal UnitPrice { get; set; }
 
     [Range(typeof(decimal), "0", "999999999")]
