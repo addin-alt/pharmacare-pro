@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using PharmaCarePro.Web.Components;
 using PharmaCarePro.Web.Components.Account;
 using PharmaCarePro.Web.Data;
+using PharmaCarePro.Web.Services.Email;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,7 +31,7 @@ builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
 builder.Services.AddIdentityCore<ApplicationUser>(options =>
     {
-        options.SignIn.RequireConfirmedAccount = false;
+        options.SignIn.RequireConfirmedAccount = true;
         options.User.RequireUniqueEmail = true;
 
         options.Password.RequiredLength = 10;
@@ -51,7 +52,22 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
     .AddSignInManager()
     .AddDefaultTokenProviders();
 
-builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
+builder.Services
+    .AddOptions<SmtpEmailOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            SmtpEmailOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(
+        options =>
+            !options.EnableSsl ||
+            options.Port is 465 or 587,
+        "Secure SMTP must use port 465 or 587.")
+    .ValidateOnStart();
+
+builder.Services.AddSingleton<
+    IEmailSender<ApplicationUser>,
+    SmtpIdentityEmailSender>();
 
 var app = builder.Build();
 
