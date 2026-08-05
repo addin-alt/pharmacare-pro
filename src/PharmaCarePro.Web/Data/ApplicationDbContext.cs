@@ -20,6 +20,12 @@ public class ApplicationDbContext(
 
     public DbSet<SaleItem> SaleItems => Set<SaleItem>();
 
+    public DbSet<SaleReturn> SaleReturns =>
+        Set<SaleReturn>();
+
+    public DbSet<SaleReturnItem> SaleReturnItems =>
+        Set<SaleReturnItem>();
+
     public DbSet<Supplier> Suppliers => Set<Supplier>();
 
     public DbSet<Purchase> Purchases => Set<Purchase>();
@@ -215,6 +221,136 @@ public class ApplicationDbContext(
             entity.HasOne(item => item.Medicine)
                 .WithMany()
                 .HasForeignKey(item => item.MedicineId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(item => item.MedicineBatch)
+                .WithMany()
+                .HasForeignKey(item => item.MedicineBatchId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+
+        builder.Entity<SaleReturn>(entity =>
+        {
+            entity.ToTable(
+                "SaleReturns",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_SaleReturns_GrossReturnAmount",
+                        "\"GrossReturnAmount\" > 0");
+
+                    table.HasCheckConstraint(
+                        "CK_SaleReturns_DueReductionAmount",
+                        "\"DueReductionAmount\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_SaleReturns_RefundedAmount",
+                        "\"RefundedAmount\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_SaleReturns_SettlementTotal",
+                        "\"DueReductionAmount\" + " +
+                        "\"RefundedAmount\" = " +
+                        "\"GrossReturnAmount\"");
+
+                    table.HasCheckConstraint(
+                        "CK_SaleReturns_RefundMethod",
+                        "(\"RefundedAmount\" = 0 AND " +
+                        "\"RefundMethod\" IS NULL) OR " +
+                        "(\"RefundedAmount\" > 0 AND " +
+                        "\"RefundMethod\" IS NOT NULL AND " +
+                        "\"RefundMethod\" <> 'Due')");
+                });
+
+            entity.HasKey(saleReturn => saleReturn.Id);
+
+            entity.HasIndex(saleReturn => saleReturn.ReturnNumber)
+                .IsUnique();
+
+            entity.HasIndex(saleReturn => saleReturn.SaleId);
+            entity.HasIndex(saleReturn => saleReturn.CustomerId);
+            entity.HasIndex(saleReturn => saleReturn.ReturnedAtUtc);
+
+            entity.Property(saleReturn =>
+                    saleReturn.GrossReturnAmount)
+                .HasPrecision(18, 2);
+
+            entity.Property(saleReturn =>
+                    saleReturn.DueReductionAmount)
+                .HasPrecision(18, 2);
+
+            entity.Property(saleReturn =>
+                    saleReturn.RefundedAmount)
+                .HasPrecision(18, 2);
+
+            entity.Property(saleReturn =>
+                    saleReturn.RefundMethod)
+                .HasConversion<string>()
+                .HasMaxLength(40);
+
+            entity.HasOne(saleReturn => saleReturn.Sale)
+                .WithMany(sale => sale.Returns)
+                .HasForeignKey(saleReturn => saleReturn.SaleId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(saleReturn => saleReturn.Customer)
+                .WithMany()
+                .HasForeignKey(saleReturn => saleReturn.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<SaleReturnItem>(entity =>
+        {
+            entity.ToTable(
+                "SaleReturnItems",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_SaleReturnItems_Quantity",
+                        "\"Quantity\" > 0");
+
+                    table.HasCheckConstraint(
+                        "CK_SaleReturnItems_UnitRefundAmount",
+                        "\"UnitRefundAmount\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_SaleReturnItems_LineRefundAmount",
+                        "\"LineRefundAmount\" >= 0");
+                });
+
+            entity.HasKey(item => item.Id);
+
+            entity.HasIndex(
+                    item => new
+                    {
+                        item.SaleReturnId,
+                        item.SaleItemId
+                    })
+                .IsUnique();
+
+            entity.HasIndex(item => item.SaleItemId);
+            entity.HasIndex(item => item.MedicineBatchId);
+            entity.HasIndex(item => item.StockAction);
+
+            entity.Property(item => item.UnitRefundAmount)
+                .HasPrecision(18, 2);
+
+            entity.Property(item => item.LineRefundAmount)
+                .HasPrecision(18, 2);
+
+            entity.Property(item => item.StockAction)
+                .HasConversion<string>()
+                .HasMaxLength(40);
+
+            entity.HasOne(item => item.SaleReturn)
+                .WithMany(saleReturn => saleReturn.Items)
+                .HasForeignKey(item => item.SaleReturnId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(item => item.SaleItem)
+                .WithMany(saleItem => saleItem.ReturnItems)
+                .HasForeignKey(item => item.SaleItemId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(item => item.MedicineBatch)

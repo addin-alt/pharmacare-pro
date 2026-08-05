@@ -45,4 +45,7 @@ public sealed class SaleItem
 
     [Range(typeof(decimal), "0", "999999999")]
     public decimal LineTotal { get; set; }
+
+    public ICollection<SaleReturnItem> ReturnItems { get; set; } =
+        new List<SaleReturnItem>();
 }

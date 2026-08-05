@@ -52,6 +52,9 @@ public sealed class Sale : IValidatableObject
     public ICollection<SaleItem> Items { get; set; } =
         new List<SaleItem>();
 
+    public ICollection<SaleReturn> Returns { get; set; } =
+        new List<SaleReturn>();
+
     public IEnumerable<ValidationResult> Validate(
         ValidationContext validationContext)
     {
