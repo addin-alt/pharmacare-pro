@@ -375,9 +375,10 @@ else
                         {
                             <tr @key="saleReturn.Id">
                                 <td>
-                                    <strong>
+                                    <a class="invoice-table-link"
+                                       href="@($"/returns/{saleReturn.Id}/receipt")">
                                         @saleReturn.ReturnNumber
-                                    </strong>
+                                    </a>
                                     <small>
                                         @(saleReturn.ReturnedAtUtc
                                             .ToLocalTime()

@@ -1,0 +1,496 @@
+@page "/returns/{SaleReturnId:guid}/receipt"
+
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.JSInterop
+@using PharmaCarePro.Domain.Entities
+@using PharmaCarePro.Web.Data
+
+@inject IServiceScopeFactory ScopeFactory
+@inject IJSRuntime JavaScript
+
+<PageTitle>
+    @(saleReturn is null
+        ? "Sales Return Receipt | PharmaCare Pro"
+        : $"{saleReturn.ReturnNumber} | PharmaCare Pro")
+</PageTitle>
+
+<div class="page-heading module-heading invoice-screen-heading">
+    <div>
+        <span class="eyebrow">RETURN DOCUMENT</span>
+        <h1>Sales return receipt</h1>
+        <p>
+            Review returned medicines, stock actions and the customer
+            settlement.
+        </p>
+    </div>
+
+    <div class="heading-actions">
+        <a class="button button-secondary" href="/returns">
+            Back to Sales Returns
+        </a>
+
+        @if (saleReturn is not null)
+        {
+            <button class="button button-primary"
+                    type="button"
+                    @onclick="PrintAsync">
+                Print receipt
+            </button>
+        }
+    </div>
+</div>
+
+@if (isLoading)
+{
+    <section class="dashboard-panel invoice-loading-panel">
+        <strong>Loading sales return receipt...</strong>
+        <p>Reading the return and stock records from Supabase.</p>
+    </section>
+}
+else if (!string.IsNullOrWhiteSpace(loadError))
+{
+    <div class="form-status status-error">
+        @loadError
+    </div>
+}
+else if (saleReturn is not null)
+{
+    <section class="invoice-sheet">
+        <header class="invoice-document-header">
+            <div class="invoice-pharmacy-identity">
+                <div class="invoice-pharmacy-mark">↩</div>
+
+                <div>
+                    <h2>@profile.PharmacyName</h2>
+                    <strong>@profile.BranchName</strong>
+
+                    @if (!string.IsNullOrWhiteSpace(profile.Address))
+                    {
+                        <p>@profile.Address</p>
+                    }
+
+                    <div class="invoice-contact-line">
+                        @if (!string.IsNullOrWhiteSpace(profile.Phone))
+                        {
+                            <span>@profile.Phone</span>
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(profile.Email))
+                        {
+                            <span>@profile.Email</span>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="invoice-document-title">
+                <span class="invoice-status-badge
+                    invoice-status-refunded">
+                    Recorded
+                </span>
+
+                <h2>RETURN RECEIPT</h2>
+                <strong>@saleReturn.ReturnNumber</strong>
+                <small>
+                    @FormatDateTime(saleReturn.ReturnedAtUtc)
+                </small>
+            </div>
+        </header>
+
+        <section class="invoice-information-grid">
+            <article>
+                <span class="invoice-section-label">
+                    ORIGINAL SALE
+                </span>
+
+                <a class="invoice-table-link"
+                   href="@($"/sales/{saleReturn.SaleId}/invoice")">
+                    @saleReturn.Sale.InvoiceNumber
+                </a>
+
+                <small>
+                    Sold:
+                    @FormatDateTime(saleReturn.Sale.SoldAtUtc)
+                </small>
+
+                <small>
+                    Current sale status:
+                    @FormatSaleStatus(saleReturn.Sale.Status)
+                </small>
+            </article>
+
+            <article>
+                <span class="invoice-section-label">
+                    CUSTOMER
+                </span>
+
+                <strong>
+                    @(saleReturn.Customer?.Name ??
+                        saleReturn.Sale.Customer?.Name ??
+                        saleReturn.Sale.CustomerName ??
+                        "Walk-in customer")
+                </strong>
+
+                @if (!string.IsNullOrWhiteSpace(
+                    saleReturn.Customer?.CustomerCode))
+                {
+                    <small>
+                        Customer code:
+                        @saleReturn.Customer.CustomerCode
+                    </small>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(
+                    saleReturn.Customer?.Phone ??
+                    saleReturn.Sale.CustomerPhone))
+                {
+                    <small>
+                        Phone:
+                        @(saleReturn.Customer?.Phone ??
+                            saleReturn.Sale.CustomerPhone)
+                    </small>
+                }
+            </article>
+
+            <article>
+                <span class="invoice-section-label">
+                    SETTLEMENT
+                </span>
+
+                <strong>
+                    @FormatRefundMethod(
+                        saleReturn.RefundMethod)
+                </strong>
+
+                <small>
+                    Due reduced:
+                    @Currency(
+                        saleReturn.DueReductionAmount)
+                </small>
+
+                <small>
+                    Money refunded:
+                    @Currency(saleReturn.RefundedAmount)
+                </small>
+            </article>
+        </section>
+
+        <div class="invoice-table-wrap">
+            <table class="invoice-item-table">
+                <thead>
+                    <tr>
+                        <th>Medicine</th>
+                        <th>Batch</th>
+                        <th>Stock action</th>
+                        <th class="invoice-number-cell">
+                            Quantity
+                        </th>
+                        <th class="invoice-number-cell">
+                            Unit return
+                        </th>
+                        <th class="invoice-number-cell">
+                            Line return
+                        </th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @foreach (var item in saleReturn.Items
+                        .OrderBy(item =>
+                            item.SaleItem.BrandName)
+                        .ThenBy(item =>
+                            item.SaleItem.BatchNumber))
+                    {
+                        <tr @key="item.Id">
+                            <td>
+                                <strong>
+                                    @item.SaleItem.BrandName
+                                </strong>
+
+                                <small>
+                                    @item.SaleItem.GenericName ·
+                                    @item.SaleItem.Strength
+                                </small>
+                            </td>
+
+                            <td>
+                                <strong>
+                                    @item.SaleItem.BatchNumber
+                                </strong>
+                            </td>
+
+                            <td>
+                                <strong>
+                                    @FormatStockAction(
+                                        item.StockAction)
+                                </strong>
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                @item.Quantity
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                @Currency(
+                                    item.UnitRefundAmount)
+                            </td>
+
+                            <td class="invoice-number-cell
+                                invoice-return-value">
+                                −@Currency(
+                                    item.LineRefundAmount)
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="invoice-lower-grid">
+            <section class="invoice-notes-panel">
+                <span class="invoice-section-label">
+                    RETURN DETAILS
+                </span>
+
+                <p>
+                    <strong>Reason:</strong>
+                    @saleReturn.Reason
+                </p>
+
+                @if (!string.IsNullOrWhiteSpace(
+                    saleReturn.Notes))
+                {
+                    <p>
+                        <strong>Notes:</strong>
+                        @saleReturn.Notes
+                    </p>
+                }
+
+                <div class="invoice-return-notice">
+                    <strong>
+                        Recorded by an authenticated pharmacy user
+                    </strong>
+
+                    <small>
+                        This receipt is linked permanently to the
+                        original invoice and stock-movement ledger.
+                    </small>
+                </div>
+            </section>
+
+            <section class="invoice-total-panel">
+                <div>
+                    <span>Returned units</span>
+
+                    <strong>
+                        @saleReturn.Items.Sum(item =>
+                            item.Quantity)
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Due reduction</span>
+
+                    <strong>
+                        @Currency(
+                            saleReturn.DueReductionAmount)
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Customer refund</span>
+
+                    <strong>
+                        @Currency(
+                            saleReturn.RefundedAmount)
+                    </strong>
+                </div>
+
+                <div class="invoice-current-total">
+                    <span>Total return value</span>
+
+                    <strong>
+                        @Currency(
+                            saleReturn.GrossReturnAmount)
+                    </strong>
+                </div>
+            </section>
+        </div>
+
+        <footer class="invoice-document-footer">
+            <div>
+                <strong>@profile.PharmacyName</strong>
+
+                <span>
+                    Computer-generated return receipt ·
+                    No signature required
+                </span>
+            </div>
+
+            <div>
+                <span>Developed by Addin Alt</span>
+                <strong>@saleReturn.ReturnNumber</strong>
+            </div>
+        </footer>
+    </section>
+}
+
+@code {
+    [Parameter]
+    public Guid SaleReturnId { get; set; }
+
+    private SaleReturn? saleReturn;
+    private PharmacyProfile profile = new();
+
+    private string? loadError;
+    private bool isLoading = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadReceiptAsync();
+    }
+
+    private async Task LoadReceiptAsync()
+    {
+        isLoading = true;
+        loadError = null;
+
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+
+            var database =
+                scope.ServiceProvider
+                    .GetRequiredService<ApplicationDbContext>();
+
+            saleReturn =
+                await database.SaleReturns
+                    .AsNoTracking()
+                    .Include(item => item.Sale)
+                        .ThenInclude(item => item.Customer)
+                    .Include(item => item.Customer)
+                    .Include(item => item.Items)
+                        .ThenInclude(item => item.SaleItem)
+                    .Include(item => item.Items)
+                        .ThenInclude(item =>
+                            item.MedicineBatch)
+                    .SingleOrDefaultAsync(item =>
+                        item.Id == SaleReturnId);
+
+            if (saleReturn is null)
+            {
+                loadError =
+                    "The requested sales return receipt was not found.";
+                return;
+            }
+
+            profile =
+                await database.PharmacyProfiles
+                    .AsNoTracking()
+                    .OrderBy(item => item.CreatedAtUtc)
+                    .FirstOrDefaultAsync()
+                ?? new PharmacyProfile();
+        }
+        catch (Exception exception)
+        {
+            loadError =
+                "The sales return receipt could not be loaded: " +
+                exception.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task PrintAsync()
+    {
+        await JavaScript.InvokeVoidAsync("window.print");
+    }
+
+    private string Currency(decimal amount)
+    {
+        var symbol =
+            string.IsNullOrWhiteSpace(
+                profile.CurrencySymbol)
+                ? "৳"
+                : profile.CurrencySymbol;
+
+        return $"{symbol}{amount:N2}";
+    }
+
+    private string FormatDateTime(DateTime utcDateTime)
+    {
+        DateTime localDateTime;
+
+        try
+        {
+            var timeZone =
+                TimeZoneInfo.FindSystemTimeZoneById(
+                    profile.TimeZoneId);
+
+            localDateTime =
+                TimeZoneInfo.ConvertTimeFromUtc(
+                    DateTime.SpecifyKind(
+                        utcDateTime,
+                        DateTimeKind.Utc),
+                    timeZone);
+        }
+        catch
+        {
+            localDateTime =
+                utcDateTime.ToLocalTime();
+        }
+
+        return localDateTime.ToString(
+            "dd MMM yyyy, hh:mm tt");
+    }
+
+    private static string FormatRefundMethod(
+        PaymentMethod? method)
+    {
+        return method switch
+        {
+            null =>
+                "No money refund required",
+
+            PaymentMethod.MobileBanking =>
+                "Mobile banking refund",
+
+            PaymentMethod.BankTransfer =>
+                "Bank transfer refund",
+
+            _ => $"{method} refund"
+        };
+    }
+
+    private static string FormatSaleStatus(
+        SaleStatus status)
+    {
+        return status switch
+        {
+            SaleStatus.PartiallyPaid =>
+                "Partially paid",
+
+            _ => status.ToString()
+        };
+    }
+
+    private static string FormatStockAction(
+        ReturnStockAction stockAction)
+    {
+        return stockAction switch
+        {
+            ReturnStockAction.Restock =>
+                "Restocked as saleable",
+
+            ReturnStockAction.Quarantine =>
+                "Held in quarantine",
+
+            ReturnStockAction.Dispose =>
+                "Disposed / damaged",
+
+            _ => stockAction.ToString()
+        };
+    }
+}
