@@ -32,6 +32,12 @@ public class ApplicationDbContext(
 
     public DbSet<PurchaseItem> PurchaseItems => Set<PurchaseItem>();
 
+    public DbSet<SupplierReturn> SupplierReturns =>
+        Set<SupplierReturn>();
+
+    public DbSet<SupplierReturnItem> SupplierReturnItems =>
+        Set<SupplierReturnItem>();
+
     public DbSet<Customer> Customers => Set<Customer>();
 
     public DbSet<CustomerPayment> CustomerPayments =>
@@ -504,6 +510,162 @@ public class ApplicationDbContext(
             entity.HasOne(item => item.Medicine)
                 .WithMany()
                 .HasForeignKey(item => item.MedicineId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+
+        builder.Entity<SupplierReturn>(entity =>
+        {
+            entity.ToTable(
+                "SupplierReturns",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_SupplierReturns_GrossReturnAmount",
+                        "\"GrossReturnAmount\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_SupplierReturns_PayableReductionAmount",
+                        "\"PayableReductionAmount\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_SupplierReturns_SupplierRefundAmount",
+                        "\"SupplierRefundAmount\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_SupplierReturns_SettlementTotal",
+                        "\"PayableReductionAmount\" + " +
+                        "\"SupplierRefundAmount\" = " +
+                        "\"GrossReturnAmount\"");
+
+                    table.HasCheckConstraint(
+                        "CK_SupplierReturns_RefundMethod",
+                        "(\"SupplierRefundAmount\" = 0 AND " +
+                        "\"RefundMethod\" IS NULL) OR " +
+                        "(\"SupplierRefundAmount\" > 0 AND " +
+                        "\"RefundMethod\" IS NOT NULL AND " +
+                        "\"RefundMethod\" <> 'Due')");
+                });
+
+            entity.HasKey(supplierReturn =>
+                supplierReturn.Id);
+
+            entity.HasIndex(supplierReturn =>
+                    supplierReturn.ReturnNumber)
+                .IsUnique();
+
+            entity.HasIndex(supplierReturn =>
+                supplierReturn.PurchaseId);
+
+            entity.HasIndex(supplierReturn =>
+                supplierReturn.SupplierId);
+
+            entity.HasIndex(supplierReturn =>
+                supplierReturn.ReturnedAtUtc);
+
+            entity.Property(supplierReturn =>
+                    supplierReturn.GrossReturnAmount)
+                .HasPrecision(18, 2);
+
+            entity.Property(supplierReturn =>
+                    supplierReturn.PayableReductionAmount)
+                .HasPrecision(18, 2);
+
+            entity.Property(supplierReturn =>
+                    supplierReturn.SupplierRefundAmount)
+                .HasPrecision(18, 2);
+
+            entity.Property(supplierReturn =>
+                    supplierReturn.RefundMethod)
+                .HasConversion<string>()
+                .HasMaxLength(40);
+
+            entity.HasOne(supplierReturn =>
+                    supplierReturn.Purchase)
+                .WithMany(purchase =>
+                    purchase.Returns)
+                .HasForeignKey(supplierReturn =>
+                    supplierReturn.PurchaseId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(supplierReturn =>
+                    supplierReturn.Supplier)
+                .WithMany(supplier =>
+                    supplier.Returns)
+                .HasForeignKey(supplierReturn =>
+                    supplierReturn.SupplierId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<SupplierReturnItem>(entity =>
+        {
+            entity.ToTable(
+                "SupplierReturnItems",
+                table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_SupplierReturnItems_Quantity",
+                        "\"Quantity\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_SupplierReturnItems_FreeQuantity",
+                        "\"FreeQuantity\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_SupplierReturnItems_TotalQuantity",
+                        "\"Quantity\" + \"FreeQuantity\" > 0");
+
+                    table.HasCheckConstraint(
+                        "CK_SupplierReturnItems_UnitReturnAmount",
+                        "\"UnitReturnAmount\" >= 0");
+
+                    table.HasCheckConstraint(
+                        "CK_SupplierReturnItems_LineReturnAmount",
+                        "\"LineReturnAmount\" >= 0");
+                });
+
+            entity.HasKey(item => item.Id);
+
+            entity.HasIndex(
+                    item => new
+                    {
+                        item.SupplierReturnId,
+                        item.PurchaseItemId
+                    })
+                .IsUnique();
+
+            entity.HasIndex(item => item.PurchaseItemId);
+            entity.HasIndex(item => item.MedicineBatchId);
+
+            entity.Property(item =>
+                    item.UnitReturnAmount)
+                .HasPrecision(18, 2);
+
+            entity.Property(item =>
+                    item.LineReturnAmount)
+                .HasPrecision(18, 2);
+
+            entity.HasOne(item =>
+                    item.SupplierReturn)
+                .WithMany(supplierReturn =>
+                    supplierReturn.Items)
+                .HasForeignKey(item =>
+                    item.SupplierReturnId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(item =>
+                    item.PurchaseItem)
+                .WithMany(purchaseItem =>
+                    purchaseItem.ReturnItems)
+                .HasForeignKey(item =>
+                    item.PurchaseItemId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(item =>
+                    item.MedicineBatch)
+                .WithMany()
+                .HasForeignKey(item =>
+                    item.MedicineBatchId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

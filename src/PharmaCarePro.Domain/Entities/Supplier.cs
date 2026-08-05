@@ -51,4 +51,7 @@ public sealed class Supplier
 
     public ICollection<SupplierPayment> Payments { get; set; } =
         new List<SupplierPayment>();
+
+    public ICollection<SupplierReturn> Returns { get; set; } =
+        new List<SupplierReturn>();
 }

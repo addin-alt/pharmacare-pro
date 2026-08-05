@@ -44,6 +44,9 @@ public sealed class PurchaseItem : IValidatableObject
     [StringLength(50)]
     public string? RackLocation { get; set; }
 
+    public ICollection<SupplierReturnItem> ReturnItems { get; set; } =
+        new List<SupplierReturnItem>();
+
     public IEnumerable<ValidationResult> Validate(
         ValidationContext validationContext)
     {

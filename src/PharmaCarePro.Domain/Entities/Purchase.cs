@@ -53,6 +53,9 @@ public sealed class Purchase : IValidatableObject
     public ICollection<PurchaseItem> Items { get; set; } =
         new List<PurchaseItem>();
 
+    public ICollection<SupplierReturn> Returns { get; set; } =
+        new List<SupplierReturn>();
+
     public IEnumerable<ValidationResult> Validate(
         ValidationContext validationContext)
     {
