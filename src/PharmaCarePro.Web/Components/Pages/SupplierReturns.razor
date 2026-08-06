@@ -399,9 +399,10 @@ else
                         {
                             <tr @key="supplierReturn.Id">
                                 <td>
-                                    <strong>
+                                    <a class="invoice-table-link"
+                                       href="@($"/supplier-returns/{supplierReturn.Id}/receipt")">
                                         @supplierReturn.ReturnNumber
-                                    </strong>
+                                    </a>
 
                                     <small>
                                         @(supplierReturn.ReturnedAtUtc

@@ -1,0 +1,514 @@
+@page "/supplier-returns/{SupplierReturnId:guid}/receipt"
+
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.JSInterop
+@using PharmaCarePro.Domain.Entities
+@using PharmaCarePro.Web.Data
+
+@inject IServiceScopeFactory ScopeFactory
+@inject IJSRuntime JavaScript
+
+<PageTitle>
+    @(supplierReturn is null
+        ? "Supplier Return Receipt | PharmaCare Pro"
+        : $"{supplierReturn.ReturnNumber} | PharmaCare Pro")
+</PageTitle>
+
+<div class="page-heading module-heading invoice-screen-heading">
+    <div>
+        <span class="eyebrow">PURCHASE RETURN DOCUMENT</span>
+        <h1>Supplier return receipt</h1>
+
+        <p>
+            Review returned stock, payable reductions and money
+            recovered from the supplier.
+        </p>
+    </div>
+
+    <div class="heading-actions">
+        <a class="button button-secondary"
+           href="/supplier-returns">
+            Back to Supplier Returns
+        </a>
+
+        @if (supplierReturn is not null)
+        {
+            <button class="button button-primary"
+                    type="button"
+                    @onclick="PrintAsync">
+                Print receipt
+            </button>
+        }
+    </div>
+</div>
+
+@if (isLoading)
+{
+    <section class="dashboard-panel invoice-loading-panel">
+        <strong>Loading supplier return receipt...</strong>
+
+        <p>
+            Reading the supplier return and stock records from
+            Supabase.
+        </p>
+    </section>
+}
+else if (!string.IsNullOrWhiteSpace(loadError))
+{
+    <div class="form-status status-error">
+        @loadError
+    </div>
+}
+else if (supplierReturn is not null)
+{
+    <section class="invoice-sheet">
+        <header class="invoice-document-header">
+            <div class="invoice-pharmacy-identity">
+                <div class="invoice-pharmacy-mark">↪</div>
+
+                <div>
+                    <h2>@profile.PharmacyName</h2>
+                    <strong>@profile.BranchName</strong>
+
+                    @if (!string.IsNullOrWhiteSpace(
+                        profile.Address))
+                    {
+                        <p>@profile.Address</p>
+                    }
+
+                    <div class="invoice-contact-line">
+                        @if (!string.IsNullOrWhiteSpace(
+                            profile.Phone))
+                        {
+                            <span>@profile.Phone</span>
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(
+                            profile.Email))
+                        {
+                            <span>@profile.Email</span>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="invoice-document-title">
+                <span class="invoice-status-badge
+                    invoice-status-refunded">
+                    Recorded
+                </span>
+
+                <h2>SUPPLIER RETURN</h2>
+                <strong>@supplierReturn.ReturnNumber</strong>
+
+                <small>
+                    @FormatDateTime(
+                        supplierReturn.ReturnedAtUtc)
+                </small>
+            </div>
+        </header>
+
+        <section class="invoice-information-grid">
+            <article>
+                <span class="invoice-section-label">
+                    ORIGINAL PURCHASE
+                </span>
+
+                <strong>
+                    @supplierReturn.Purchase.PurchaseNumber
+                </strong>
+
+                <small>
+                    Received:
+                    @FormatDateTime(
+                        supplierReturn
+                            .Purchase
+                            .PurchaseDateUtc)
+                </small>
+
+                <small>
+                    Current status:
+                    @supplierReturn.Purchase.Status
+                </small>
+
+                @if (!string.IsNullOrWhiteSpace(
+                    supplierReturn
+                        .Purchase
+                        .SupplierInvoiceNumber))
+                {
+                    <small>
+                        Supplier invoice:
+                        @(supplierReturn
+                            .Purchase
+                            .SupplierInvoiceNumber)
+                    </small>
+                }
+            </article>
+
+            <article>
+                <span class="invoice-section-label">
+                    SUPPLIER
+                </span>
+
+                <strong>
+                    @supplierReturn.Supplier.Name
+                </strong>
+
+                <small>
+                    Supplier code:
+                    @supplierReturn.Supplier.SupplierCode
+                </small>
+
+                @if (!string.IsNullOrWhiteSpace(
+                    supplierReturn.Supplier.Phone))
+                {
+                    <small>
+                        Phone:
+                        @supplierReturn.Supplier.Phone
+                    </small>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(
+                    supplierReturn.Supplier.Address))
+                {
+                    <small>
+                        @supplierReturn.Supplier.Address
+                    </small>
+                }
+            </article>
+
+            <article>
+                <span class="invoice-section-label">
+                    SETTLEMENT
+                </span>
+
+                <strong>
+                    @FormatRefundMethod(
+                        supplierReturn.RefundMethod)
+                </strong>
+
+                <small>
+                    Payable reduced:
+                    @Currency(
+                        supplierReturn
+                            .PayableReductionAmount)
+                </small>
+
+                <small>
+                    Money recovered:
+                    @Currency(
+                        supplierReturn
+                            .SupplierRefundAmount)
+                </small>
+            </article>
+        </section>
+
+        <div class="invoice-table-wrap">
+            <table class="invoice-item-table">
+                <thead>
+                    <tr>
+                        <th>Medicine</th>
+                        <th>Batch</th>
+                        <th class="invoice-number-cell">
+                            Paid units
+                        </th>
+                        <th class="invoice-number-cell">
+                            Free units
+                        </th>
+                        <th class="invoice-number-cell">
+                            Unit return
+                        </th>
+                        <th class="invoice-number-cell">
+                            Line return
+                        </th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @foreach (var item in supplierReturn.Items
+                        .OrderBy(item =>
+                            item.PurchaseItem.MedicineName)
+                        .ThenBy(item =>
+                            item.PurchaseItem.BatchNumber))
+                    {
+                        <tr @key="item.Id">
+                            <td>
+                                <strong>
+                                    @item.PurchaseItem.MedicineName
+                                </strong>
+
+                                <small>
+                                    Purchase item returned to supplier
+                                </small>
+                            </td>
+
+                            <td>
+                                <strong>
+                                    @item.PurchaseItem.BatchNumber
+                                </strong>
+
+                                <small>
+                                    Expires
+                                    @item.PurchaseItem.ExpiryDate
+                                        .ToString("dd MMM yyyy")
+                                </small>
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                @item.Quantity
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                @item.FreeQuantity
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                @Currency(
+                                    item.UnitReturnAmount)
+                            </td>
+
+                            <td class="invoice-number-cell
+                                invoice-return-value">
+                                −@Currency(
+                                    item.LineReturnAmount)
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="invoice-lower-grid">
+            <section class="invoice-notes-panel">
+                <span class="invoice-section-label">
+                    RETURN DETAILS
+                </span>
+
+                <p>
+                    <strong>Reason:</strong>
+                    @supplierReturn.Reason
+                </p>
+
+                @if (!string.IsNullOrWhiteSpace(
+                    supplierReturn.Notes))
+                {
+                    <p>
+                        <strong>Notes:</strong>
+                        @supplierReturn.Notes
+                    </p>
+                }
+
+                <div class="invoice-return-notice">
+                    <strong>
+                        Inventory and supplier balances were updated
+                        transactionally
+                    </strong>
+
+                    <small>
+                        This receipt is permanently linked to its
+                        purchase, medicine batches and stock movements.
+                    </small>
+                </div>
+            </section>
+
+            <section class="invoice-total-panel">
+                <div>
+                    <span>Paid units returned</span>
+
+                    <strong>
+                        @(supplierReturn.Items.Sum(item =>
+                            item.Quantity))
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Free units returned</span>
+
+                    <strong>
+                        @(supplierReturn.Items.Sum(item =>
+                            item.FreeQuantity))
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Payable reduction</span>
+
+                    <strong>
+                        @Currency(
+                            supplierReturn
+                                .PayableReductionAmount)
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Supplier refund</span>
+
+                    <strong>
+                        @Currency(
+                            supplierReturn
+                                .SupplierRefundAmount)
+                    </strong>
+                </div>
+
+                <div class="invoice-current-total">
+                    <span>Total return value</span>
+
+                    <strong>
+                        @Currency(
+                            supplierReturn
+                                .GrossReturnAmount)
+                    </strong>
+                </div>
+            </section>
+        </div>
+
+        <footer class="invoice-document-footer">
+            <div>
+                <strong>@profile.PharmacyName</strong>
+
+                <span>
+                    Computer-generated supplier return receipt ·
+                    No signature required
+                </span>
+            </div>
+
+            <div>
+                <span>Developed by Addin Alt</span>
+                <strong>@supplierReturn.ReturnNumber</strong>
+            </div>
+        </footer>
+    </section>
+}
+
+@code {
+    [Parameter]
+    public Guid SupplierReturnId { get; set; }
+
+    private SupplierReturn? supplierReturn;
+    private PharmacyProfile profile = new();
+
+    private string? loadError;
+    private bool isLoading = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadReceiptAsync();
+    }
+
+    private async Task LoadReceiptAsync()
+    {
+        isLoading = true;
+        loadError = null;
+
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+
+            var database =
+                scope.ServiceProvider
+                    .GetRequiredService<ApplicationDbContext>();
+
+            supplierReturn =
+                await database.SupplierReturns
+                    .AsNoTracking()
+                    .AsSplitQuery()
+                    .Include(item => item.Purchase)
+                    .Include(item => item.Supplier)
+                    .Include(item => item.Items)
+                        .ThenInclude(item =>
+                            item.PurchaseItem)
+                    .Include(item => item.Items)
+                        .ThenInclude(item =>
+                            item.MedicineBatch)
+                    .SingleOrDefaultAsync(item =>
+                        item.Id == SupplierReturnId);
+
+            if (supplierReturn is null)
+            {
+                loadError =
+                    "The requested supplier return receipt was not " +
+                    "found.";
+
+                return;
+            }
+
+            profile =
+                await database.PharmacyProfiles
+                    .AsNoTracking()
+                    .OrderBy(item => item.CreatedAtUtc)
+                    .FirstOrDefaultAsync()
+                ?? new PharmacyProfile();
+        }
+        catch (Exception exception)
+        {
+            loadError =
+                "The supplier return receipt could not be loaded: " +
+                exception.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task PrintAsync()
+    {
+        await JavaScript.InvokeVoidAsync("window.print");
+    }
+
+    private string Currency(decimal amount)
+    {
+        var symbol =
+            string.IsNullOrWhiteSpace(
+                profile.CurrencySymbol)
+                ? "৳"
+                : profile.CurrencySymbol;
+
+        return $"{symbol}{amount:N2}";
+    }
+
+    private string FormatDateTime(DateTime utcDateTime)
+    {
+        DateTime localDateTime;
+
+        try
+        {
+            var timeZone =
+                TimeZoneInfo.FindSystemTimeZoneById(
+                    profile.TimeZoneId);
+
+            localDateTime =
+                TimeZoneInfo.ConvertTimeFromUtc(
+                    DateTime.SpecifyKind(
+                        utcDateTime,
+                        DateTimeKind.Utc),
+                    timeZone);
+        }
+        catch
+        {
+            localDateTime =
+                utcDateTime.ToLocalTime();
+        }
+
+        return localDateTime.ToString(
+            "dd MMM yyyy, hh:mm tt");
+    }
+
+    private static string FormatRefundMethod(
+        PaymentMethod? method)
+    {
+        return method switch
+        {
+            null =>
+                "No money refund required",
+
+            PaymentMethod.MobileBanking =>
+                "Mobile banking refund",
+
+            PaymentMethod.BankTransfer =>
+                "Bank transfer refund",
+
+            _ => $"{method} refund"
+        };
+    }
+}
