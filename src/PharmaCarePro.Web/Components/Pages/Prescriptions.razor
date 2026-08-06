@@ -1,6 +1,7 @@
 @page "/prescriptions"
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.EntityFrameworkCore
+@using PharmaCarePro.Application.Documents
 @using PharmaCarePro.Domain.Entities
 @using PharmaCarePro.Web.Data
 @inject IServiceScopeFactory ScopeFactory
@@ -725,9 +726,20 @@
 
             var now = DateTime.UtcNow;
 
+            var prescriptionPrefix =
+                await database.PharmacyProfiles
+                    .AsNoTracking()
+                    .OrderBy(profile =>
+                        profile.CreatedAtUtc)
+                    .Select(profile =>
+                        profile.PrescriptionPrefix)
+                    .FirstOrDefaultAsync()
+                ?? "RX";
+
             var prescriptionNumber =
-                $"RX-{now:yyyyMMddHHmmss}-" +
-                $"{Random.Shared.Next(100, 999)}";
+                DocumentNumberGenerator.Generate(
+                    prescriptionPrefix,
+                    now);
 
             var prescription = new Prescription
             {

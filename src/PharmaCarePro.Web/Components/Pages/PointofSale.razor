@@ -1,6 +1,7 @@
 @page "/pos"
 @page "/pos/{RequestedPrescriptionId:guid}"
 @using Microsoft.EntityFrameworkCore
+@using PharmaCarePro.Application.Documents
 @using PharmaCarePro.Application.Inventory
 @using PharmaCarePro.Domain.Entities
 @using PharmaCarePro.Web.Data
@@ -1049,9 +1050,20 @@
                 }
             }
 
+            var invoicePrefix =
+                await database.PharmacyProfiles
+                    .AsNoTracking()
+                    .OrderBy(profile =>
+                        profile.CreatedAtUtc)
+                    .Select(profile =>
+                        profile.InvoicePrefix)
+                    .FirstOrDefaultAsync()
+                ?? "PCP";
+
             var invoiceNumber =
-                $"PCP-{now:yyyyMMddHHmmss}-" +
-                $"{Random.Shared.Next(100, 999)}";
+                DocumentNumberGenerator.Generate(
+                    invoicePrefix,
+                    now);
 
             var sale = new Sale
             {
