@@ -74,9 +74,12 @@
     </article>
 
     <article class="report-summary-card">
-        <span>Purchase value</span>
+        <span>Net purchase value</span>
         <strong>৳@purchaseValue.ToString("N2")</strong>
-        <small>@purchaseCount purchase receipts</small>
+        <small>
+            @purchaseCount purchase receipts ·
+            ৳@purchaseReturns.ToString("N2") returned in period
+        </small>
     </article>
 
     <article class="report-summary-card">
@@ -125,12 +128,34 @@
                 <span>Purchase dues</span>
                 <strong>৳@purchaseDue.ToString("N2")</strong>
             </div>
+
+            <div>
+                <span>Supplier returns recorded</span>
+                <strong>৳@purchaseReturns.ToString("N2")</strong>
+            </div>
+
+            <div>
+                <span>Supplier payable reductions</span>
+                <strong>
+                    ৳@supplierReturnPayableReduction.ToString("N2")
+                </strong>
+            </div>
+
+            <div>
+                <span>Supplier refunds recovered</span>
+                <strong>
+                    ৳@supplierReturnRefunds.ToString("N2")
+                </strong>
+            </div>
         </div>
 
         <p class="report-method-note">
             Net sales, sold quantities and estimated cost of goods exclude
             recorded sales returns. Cost uses the purchase price captured
-            permanently when each item was sold.
+            permanently when each item was sold. Net purchase totals use
+            the current post-return balances of purchase receipts dated in
+            the selected period. Supplier-return totals use the date each
+            return was recorded.
         </p>
     </section>
 
@@ -395,6 +420,9 @@
     private decimal purchaseValue;
     private decimal purchasePaid;
     private decimal purchaseDue;
+    private decimal purchaseReturns;
+    private decimal supplierReturnPayableReduction;
+    private decimal supplierReturnRefunds;
 
     private decimal inventoryCostValue;
     private decimal inventoryRetailValue;
@@ -486,8 +514,17 @@
                 .Where(purchase =>
                     purchase.PurchaseDateUtc >= startUtc &&
                     purchase.PurchaseDateUtc < endUtc &&
-                    purchase.Status == PurchaseStatus.Received)
+                    (purchase.Status == PurchaseStatus.Received ||
+                     purchase.Status == PurchaseStatus.Returned))
                 .ToListAsync();
+
+            var supplierReturnsInPeriod =
+                await database.SupplierReturns
+                    .AsNoTracking()
+                    .Where(supplierReturn =>
+                        supplierReturn.ReturnedAtUtc >= startUtc &&
+                        supplierReturn.ReturnedAtUtc < endUtc)
+                    .ToListAsync();
 
             invoiceCount = sales.Count;
             salesRevenue = sales.Sum(sale => sale.GrandTotal);
@@ -542,6 +579,18 @@
                 purchases.Sum(purchase => purchase.PaidAmount);
             purchaseDue =
                 purchases.Sum(purchase => purchase.DueAmount);
+
+            purchaseReturns =
+                supplierReturnsInPeriod.Sum(supplierReturn =>
+                    supplierReturn.GrossReturnAmount);
+
+            supplierReturnPayableReduction =
+                supplierReturnsInPeriod.Sum(supplierReturn =>
+                    supplierReturn.PayableReductionAmount);
+
+            supplierReturnRefunds =
+                supplierReturnsInPeriod.Sum(supplierReturn =>
+                    supplierReturn.SupplierRefundAmount);
 
             var unitsByDate = netSaleItems
                 .GroupBy(item =>
