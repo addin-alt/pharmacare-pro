@@ -1,4 +1,5 @@
 @page "/pos"
+@page "/pos/{RequestedPrescriptionId:guid}"
 @using Microsoft.EntityFrameworkCore
 @using PharmaCarePro.Application.Inventory
 @using PharmaCarePro.Domain.Entities
@@ -180,7 +181,11 @@
                                 <span>@line.Quantity</span>
 
                                 <button type="button"
-                                        disabled="@isProcessing"
+                                        disabled="@(
+                                            isProcessing ||
+                                            (line.MaximumQuantity.HasValue &&
+                                             line.Quantity >=
+                                             line.MaximumQuantity.Value))"
                                         @onclick="() => ChangeQuantityAsync(
                                             line.MedicineId,
                                             1)">
@@ -203,6 +208,14 @@
                                     allocation =>
                                         $"{allocation.BatchNumber}: {allocation.Quantity}"))
                         </small>
+
+                        @if (line.PrescriptionItemId.HasValue)
+                        {
+                            <small class="pos-allocation">
+                                Prescription limit:
+                                @line.MaximumQuantity unit(s)
+                            </small>
+                        }
                     </article>
                 }
             </div>
@@ -210,8 +223,71 @@
 
         <div class="pos-form-grid">
             <div class="form-field pos-customer-selector">
+                <label>Active prescription</label>
+
+                <select value="@selectedPrescriptionId"
+                        @onchange="HandlePrescriptionSelectionAsync">
+                    <option value="@Guid.Empty">
+                        No prescription
+                    </option>
+
+                    @foreach (var prescription in prescriptions)
+                    {
+                        <option value="@prescription.Id">
+                            @prescription.PrescriptionNumber ·
+                            @prescription.PatientName ·
+                            @prescription.RemainingQuantity unit(s)
+                        </option>
+                    }
+                </select>
+            </div>
+
+            @if (SelectedPrescription is
+                PrescriptionOption selectedPrescription)
+            {
+                <div class="pos-customer-card">
+                    <div>
+                        <span>Prescription</span>
+
+                        <strong>
+                            @selectedPrescription.PrescriptionNumber
+                        </strong>
+                    </div>
+
+                    <div>
+                        <span>Prescriber</span>
+
+                        <strong>
+                            @selectedPrescription.PrescriberName
+                        </strong>
+                    </div>
+
+                    <div>
+                        <span>Remaining quantity</span>
+
+                        <strong>
+                            @selectedPrescription.RemainingQuantity
+                        </strong>
+                    </div>
+
+                    <div>
+                        <span>Valid until</span>
+
+                        <strong>
+                            @(selectedPrescription.ValidUntil.HasValue
+                                ? selectedPrescription.ValidUntil.Value
+                                    .ToString("dd MMM yyyy")
+                                : "Not limited")
+                        </strong>
+                    </div>
+                </div>
+            }
+
+            <div class="form-field pos-customer-selector">
                 <label>Registered customer</label>
                 <select value="@selectedCustomerId"
+                        disabled="@(
+                            selectedPrescriptionId != Guid.Empty)"
                         @onchange="HandleCustomerSelection">
                     <option value="@Guid.Empty">
                         Walk-in customer
@@ -354,12 +430,20 @@
 </div>
 
 @code {
+    [Parameter]
+    public Guid? RequestedPrescriptionId { get; set; }
+
     private List<MedicineOption> catalog = [];
     private List<Customer> customers = [];
+    private List<PrescriptionOption> prescriptions = [];
+
     private readonly List<CartLine> cart = [];
 
     private string searchText = string.Empty;
+
     private Guid selectedCustomerId = Guid.Empty;
+    private Guid selectedPrescriptionId = Guid.Empty;
+
     private string? customerName;
     private string? customerPhone;
     private string? statusMessage;
@@ -379,6 +463,11 @@
     private Customer? SelectedCustomer =>
         customers.SingleOrDefault(
             customer => customer.Id == selectedCustomerId);
+
+    private PrescriptionOption? SelectedPrescription =>
+        prescriptions.SingleOrDefault(
+            prescription =>
+                prescription.Id == selectedPrescriptionId);
 
     private IEnumerable<MedicineOption> FilteredCatalog
     {
@@ -437,6 +526,12 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadCatalogAsync();
+
+        if (RequestedPrescriptionId.HasValue)
+        {
+            await SelectPrescriptionAsync(
+                RequestedPrescriptionId.Value);
+        }
     }
 
     private async Task LoadCatalogAsync()
@@ -490,7 +585,177 @@
             .OrderBy(customer => customer.Name)
             .ToListAsync();
 
+        var prescriptionRecords =
+            await database.Prescriptions
+                .AsNoTracking()
+                .Include(prescription =>
+                    prescription.Customer)
+                .Include(prescription =>
+                    prescription.Items)
+                .Where(prescription =>
+                    (prescription.Status ==
+                        PrescriptionStatus.Active ||
+                     prescription.Status ==
+                        PrescriptionStatus.PartiallyDispensed) &&
+                    prescription.IssuedDate <= today &&
+                    (!prescription.ValidUntil.HasValue ||
+                     prescription.ValidUntil.Value >= today) &&
+                    prescription.Customer != null &&
+                    prescription.Customer.IsActive &&
+                    prescription.Items.Any(item =>
+                        item.QuantityDispensed <
+                        item.QuantityPrescribed))
+                .OrderBy(prescription =>
+                    prescription.ValidUntil)
+                .ThenByDescending(prescription =>
+                    prescription.CreatedAtUtc)
+                .ToListAsync();
+
+        prescriptions = prescriptionRecords
+            .Select(prescription =>
+                new PrescriptionOption(
+                    prescription.Id,
+                    prescription.PrescriptionNumber,
+                    prescription.CustomerId,
+                    prescription.PatientName,
+                    prescription.PatientPhone,
+                    prescription.PrescriberName,
+                    prescription.ValidUntil,
+                    prescription.Items
+                        .Where(item =>
+                            item.QuantityDispensed <
+                            item.QuantityPrescribed)
+                        .OrderBy(item =>
+                            item.MedicineName)
+                        .Select(item =>
+                            new PrescriptionLineOption(
+                                item.Id,
+                                item.MedicineId,
+                                item.MedicineName,
+                                item.QuantityPrescribed,
+                                item.QuantityDispensed))
+                        .ToList()))
+            .Where(prescription =>
+                prescription.Items.Count > 0)
+            .ToList();
+
         isLoading = false;
+    }
+
+    private async Task HandlePrescriptionSelectionAsync(
+        ChangeEventArgs eventArgs)
+    {
+        if (!Guid.TryParse(
+            eventArgs.Value?.ToString(),
+            out var prescriptionId))
+        {
+            prescriptionId = Guid.Empty;
+        }
+
+        await SelectPrescriptionAsync(prescriptionId);
+    }
+
+    private async Task SelectPrescriptionAsync(
+        Guid prescriptionId)
+    {
+        cart.Clear();
+
+        selectedPrescriptionId = Guid.Empty;
+        selectedCustomerId = Guid.Empty;
+
+        customerName = null;
+        customerPhone = null;
+
+        discountAmount = 0;
+        taxAmount = 0;
+        amountReceived = 0;
+
+        lastCompletedSaleId = null;
+        statusMessage = null;
+        statusIsError = false;
+
+        if (prescriptionId == Guid.Empty)
+        {
+            return;
+        }
+
+        var prescription = prescriptions
+            .SingleOrDefault(item =>
+                item.Id == prescriptionId);
+
+        if (prescription is null)
+        {
+            statusIsError = true;
+            statusMessage =
+                "The selected prescription is no longer active.";
+            return;
+        }
+
+        selectedPrescriptionId = prescription.Id;
+        selectedCustomerId = prescription.CustomerId;
+
+        var customer = SelectedCustomer;
+
+        customerName =
+            customer?.Name ??
+            prescription.PatientName;
+
+        customerPhone =
+            customer?.Phone ??
+            prescription.PatientPhone;
+
+        var unavailableMedicines = new List<string>();
+
+        foreach (var prescriptionItem in
+            prescription.Items)
+        {
+            var medicine = catalog.SingleOrDefault(item =>
+                item.Id == prescriptionItem.MedicineId);
+
+            if (medicine is null ||
+                medicine.AvailableQuantity <= 0)
+            {
+                unavailableMedicines.Add(
+                    prescriptionItem.MedicineName);
+
+                continue;
+            }
+
+            var quantityToLoad =
+                Math.Min(
+                    prescriptionItem.RemainingQuantity,
+                    medicine.AvailableQuantity);
+
+            await SetQuantityAsync(
+                prescriptionItem.MedicineId,
+                quantityToLoad,
+                prescriptionItem.Id,
+                prescriptionItem.RemainingQuantity);
+        }
+
+        if (cart.Count == 0)
+        {
+            statusIsError = true;
+            statusMessage =
+                "None of the prescribed medicines currently have " +
+                "usable inventory.";
+
+            return;
+        }
+
+        statusMessage =
+            $"Prescription {prescription.PrescriptionNumber} " +
+            $"loaded with {CartQuantity} unit(s).";
+
+        if (unavailableMedicines.Count > 0)
+        {
+            statusMessage +=
+                " Unavailable: " +
+                string.Join(
+                    ", ",
+                    unavailableMedicines) +
+                ".";
+        }
     }
 
     private void HandleCustomerSelection(
@@ -523,9 +788,36 @@
         var existing = cart.SingleOrDefault(
             line => line.MedicineId == medicineId);
 
+        Guid? prescriptionItemId = null;
+        int? maximumQuantity = null;
+
+        if (SelectedPrescription is
+            PrescriptionOption prescription)
+        {
+            var prescriptionItem =
+                prescription.Items.FirstOrDefault(item =>
+                    item.MedicineId == medicineId);
+
+            if (prescriptionItem is null)
+            {
+                statusIsError = true;
+                statusMessage =
+                    "This medicine is not included in the selected " +
+                    "prescription.";
+
+                return;
+            }
+
+            prescriptionItemId = prescriptionItem.Id;
+            maximumQuantity =
+                prescriptionItem.RemainingQuantity;
+        }
+
         await SetQuantityAsync(
             medicineId,
-            (existing?.Quantity ?? 0) + 1);
+            (existing?.Quantity ?? 0) + 1,
+            prescriptionItemId,
+            maximumQuantity);
     }
 
     private async Task ChangeQuantityAsync(
@@ -548,15 +840,29 @@
             return;
         }
 
-        await SetQuantityAsync(medicineId, quantity);
+        await SetQuantityAsync(
+            medicineId,
+            quantity,
+            existing.PrescriptionItemId,
+            existing.MaximumQuantity);
     }
 
     private async Task SetQuantityAsync(
         Guid medicineId,
-        int quantity)
+        int quantity,
+        Guid? prescriptionItemId = null,
+        int? maximumQuantity = null)
     {
         try
         {
+            if (maximumQuantity.HasValue &&
+                quantity > maximumQuantity.Value)
+            {
+                throw new InvalidOperationException(
+                    "The quantity cannot exceed the remaining " +
+                    "prescribed amount.");
+            }
+
             var medicine = catalog.Single(
                 item => item.Id == medicineId);
 
@@ -570,7 +876,9 @@
                 medicine.GenericName,
                 medicine.Strength,
                 quantity,
-                allocations);
+                allocations,
+                prescriptionItemId,
+                maximumQuantity);
 
             var existing = cart.SingleOrDefault(
                 line => line.MedicineId == medicineId);
@@ -639,7 +947,10 @@
     private void ClearCart()
     {
         cart.Clear();
+
         selectedCustomerId = Guid.Empty;
+        selectedPrescriptionId = Guid.Empty;
+
         customerName = null;
         customerPhone = null;
         discountAmount = 0;
@@ -689,13 +1000,46 @@
 
             var now = DateTime.UtcNow;
 
+            Prescription? selectedPrescription = null;
+
+            if (selectedPrescriptionId != Guid.Empty)
+            {
+                selectedPrescription =
+                    await database.Prescriptions
+                        .Include(prescription =>
+                            prescription.Items)
+                        .SingleOrDefaultAsync(prescription =>
+                            prescription.Id ==
+                                selectedPrescriptionId &&
+                            (prescription.Status ==
+                                PrescriptionStatus.Active ||
+                             prescription.Status ==
+                                PrescriptionStatus
+                                    .PartiallyDispensed) &&
+                            prescription.IssuedDate <= now.Date &&
+                            (!prescription.ValidUntil.HasValue ||
+                             prescription.ValidUntil.Value >=
+                                now.Date));
+
+                if (selectedPrescription is null)
+                {
+                    throw new InvalidOperationException(
+                        "The selected prescription is no longer " +
+                        "valid for dispensing.");
+                }
+            }
+
+            var checkoutCustomerId =
+                selectedPrescription?.CustomerId ??
+                selectedCustomerId;
+
             Customer? selectedCustomer = null;
 
-            if (selectedCustomerId != Guid.Empty)
+            if (checkoutCustomerId != Guid.Empty)
             {
                 selectedCustomer = await database.Customers
                     .SingleOrDefaultAsync(customer =>
-                        customer.Id == selectedCustomerId &&
+                        customer.Id == checkoutCustomerId &&
                         customer.IsActive);
 
                 if (selectedCustomer is null)
@@ -713,6 +1057,7 @@
             {
                 InvoiceNumber = invoiceNumber,
                 CustomerId = selectedCustomer?.Id,
+                PrescriptionId = selectedPrescription?.Id,
                 CustomerName =
                     selectedCustomer?.Name ??
                     Normalize(customerName),
@@ -730,6 +1075,48 @@
 
             foreach (var cartLine in cart)
             {
+                PrescriptionItem? prescriptionItem = null;
+
+                if (selectedPrescription is not null)
+                {
+                    if (!cartLine.PrescriptionItemId.HasValue)
+                    {
+                        throw new InvalidOperationException(
+                            "Every cart item must belong to the " +
+                            "selected prescription.");
+                    }
+
+                    prescriptionItem =
+                        selectedPrescription.Items
+                            .SingleOrDefault(item =>
+                                item.Id ==
+                                    cartLine
+                                        .PrescriptionItemId.Value &&
+                                item.MedicineId ==
+                                    cartLine.MedicineId);
+
+                    if (prescriptionItem is null)
+                    {
+                        throw new InvalidOperationException(
+                            "A prescribed medicine line could not " +
+                            "be verified.");
+                    }
+
+                    var remainingQuantity =
+                        prescriptionItem
+                            .QuantityPrescribed -
+                        prescriptionItem
+                            .QuantityDispensed;
+
+                    if (cartLine.Quantity >
+                        remainingQuantity)
+                    {
+                        throw new InvalidOperationException(
+                            "The sale quantity exceeds the remaining " +
+                            "prescribed quantity.");
+                    }
+                }
+
                 var batches = await database.MedicineBatches
                     .Include(batch => batch.Medicine)
                     .Where(batch =>
@@ -768,6 +1155,8 @@
 
                     sale.Items.Add(new SaleItem
                     {
+                        PrescriptionItemId =
+                            prescriptionItem?.Id,
                         MedicineId = batch.MedicineId,
                         MedicineBatchId = batch.Id,
                         BrandName = batch.Medicine!.BrandName,
@@ -798,6 +1187,25 @@
                             CreatedAtUtc = now
                         });
                 }
+
+                if (prescriptionItem is not null)
+                {
+                    prescriptionItem.QuantityDispensed +=
+                        cartLine.Quantity;
+                }
+            }
+
+            if (selectedPrescription is not null)
+            {
+                selectedPrescription.Status =
+                    selectedPrescription.Items.All(item =>
+                        item.QuantityDispensed >=
+                        item.QuantityPrescribed)
+                        ? PrescriptionStatus.Dispensed
+                        : PrescriptionStatus
+                            .PartiallyDispensed;
+
+                selectedPrescription.UpdatedAtUtc = now;
             }
 
             sale.Subtotal =
@@ -859,7 +1267,10 @@
             var change = ChangeAmount;
 
             cart.Clear();
+
             selectedCustomerId = Guid.Empty;
+            selectedPrescriptionId = Guid.Empty;
+
             customerName = null;
             customerPhone = null;
             discountAmount = 0;
@@ -928,13 +1339,44 @@
         int AvailableQuantity,
         decimal Price);
 
+    private sealed record PrescriptionOption(
+        Guid Id,
+        string PrescriptionNumber,
+        Guid CustomerId,
+        string PatientName,
+        string? PatientPhone,
+        string PrescriberName,
+        DateTime? ValidUntil,
+        IReadOnlyList<PrescriptionLineOption> Items)
+    {
+        public int RemainingQuantity =>
+            Items.Sum(item =>
+                item.RemainingQuantity);
+    }
+
+    private sealed record PrescriptionLineOption(
+        Guid Id,
+        Guid MedicineId,
+        string MedicineName,
+        int QuantityPrescribed,
+        int QuantityDispensed)
+    {
+        public int RemainingQuantity =>
+            Math.Max(
+                0,
+                QuantityPrescribed -
+                QuantityDispensed);
+    }
+
     private sealed record CartLine(
         Guid MedicineId,
         string BrandName,
         string GenericName,
         string Strength,
         int Quantity,
-        IReadOnlyList<FefoAllocation> Allocations)
+        IReadOnlyList<FefoAllocation> Allocations,
+        Guid? PrescriptionItemId,
+        int? MaximumQuantity)
     {
         public decimal Total =>
             Math.Round(

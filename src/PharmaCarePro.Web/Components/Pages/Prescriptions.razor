@@ -438,17 +438,29 @@
                             </p>
                         }
 
-                        @if (displayStatus ==
-                            PrescriptionStatus.Active)
+                        @if (
+                            displayStatus ==
+                                PrescriptionStatus.Active ||
+                            displayStatus ==
+                                PrescriptionStatus
+                                    .PartiallyDispensed)
                         {
-                            <button class="prescription-cancel-button"
+                            <div class="heading-actions">
+                                <a class="button button-primary"
+                                   href="@($"/pos/{prescription.Id}")">
+                                    Dispense in POS
+                                </a>
+
+                                <button
+                                    class="prescription-cancel-button"
                                     type="button"
                                     disabled="@isUpdating"
                                     @onclick="() =>
                                         CancelPrescriptionAsync(
                                             prescription.Id)">
-                                Cancel prescription
-                            </button>
+                                    Cancel prescription
+                                </button>
+                            </div>
                         }
                     </article>
                 }
