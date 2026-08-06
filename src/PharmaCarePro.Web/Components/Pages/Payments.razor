@@ -354,7 +354,10 @@ else if (activeLedger == LedgerView.Customers)
                         {
                             <tr @key="payment.Id">
                                 <td>
-                                    <strong>@payment.ReceiptNumber</strong>
+                                    <a class="invoice-table-link"
+                                       href="@($"/payments/customers/{payment.Id}/receipt")">
+                                        @payment.ReceiptNumber
+                                    </a>
                                     <small>
                                         @(payment.ReceivedAtUtc
         .ToLocalTime()

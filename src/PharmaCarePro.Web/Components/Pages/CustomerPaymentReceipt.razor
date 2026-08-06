@@ -1,0 +1,508 @@
+@page "/payments/customers/{CustomerPaymentId:guid}/receipt"
+
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.JSInterop
+@using PharmaCarePro.Domain.Entities
+@using PharmaCarePro.Web.Data
+
+@inject IServiceScopeFactory ScopeFactory
+@inject IJSRuntime JavaScript
+
+<PageTitle>
+    @(payment is null
+        ? "Customer Payment Receipt | PharmaCare Pro"
+        : $"{payment.ReceiptNumber} | PharmaCare Pro")
+</PageTitle>
+
+<div class="page-heading module-heading invoice-screen-heading">
+    <div>
+        <span class="eyebrow">CUSTOMER ACCOUNT COLLECTION</span>
+        <h1>Customer payment receipt</h1>
+
+        <p>
+            Review the collected amount, account balance and invoice
+            allocations for this payment.
+        </p>
+    </div>
+
+    <div class="heading-actions">
+        <a class="button button-secondary"
+           href="/payments">
+            Back to Payments
+        </a>
+
+        @if (payment is not null)
+        {
+            <button class="button button-primary"
+                    type="button"
+                    @onclick="PrintAsync">
+                Print receipt
+            </button>
+        }
+    </div>
+</div>
+
+@if (isLoading)
+{
+    <section class="dashboard-panel invoice-loading-panel">
+        <strong>Loading customer payment receipt...</strong>
+
+        <p>
+            Reading the payment, customer and invoice allocations from
+            Supabase.
+        </p>
+    </section>
+}
+else if (!string.IsNullOrWhiteSpace(loadError))
+{
+    <div class="form-status status-error">
+        @loadError
+    </div>
+}
+else if (payment is not null)
+{
+    <section class="invoice-sheet">
+        <header class="invoice-document-header">
+            <div class="invoice-pharmacy-identity">
+                <div class="invoice-pharmacy-mark">৳</div>
+
+                <div>
+                    <h2>@profile.PharmacyName</h2>
+                    <strong>@profile.BranchName</strong>
+
+                    @if (!string.IsNullOrWhiteSpace(profile.Address))
+                    {
+                        <p>@profile.Address</p>
+                    }
+
+                    <div class="invoice-contact-line">
+                        @if (!string.IsNullOrWhiteSpace(profile.Phone))
+                        {
+                            <span>@profile.Phone</span>
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(profile.Email))
+                        {
+                            <span>@profile.Email</span>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="invoice-document-title">
+                <span class="invoice-status-badge
+                    invoice-status-completed">
+                    Received
+                </span>
+
+                <h2>PAYMENT RECEIPT</h2>
+                <strong>@payment.ReceiptNumber</strong>
+
+                <small>
+                    @FormatDateTime(payment.ReceivedAtUtc)
+                </small>
+            </div>
+        </header>
+
+        <section class="invoice-information-grid">
+            <article>
+                <span class="invoice-section-label">
+                    RECEIVED FROM
+                </span>
+
+                <strong>@payment.Customer.Name</strong>
+
+                <small>
+                    Customer code:
+                    @payment.Customer.CustomerCode
+                </small>
+
+                @if (!string.IsNullOrWhiteSpace(
+                    payment.Customer.Phone))
+                {
+                    <small>
+                        Phone:
+                        @payment.Customer.Phone
+                    </small>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(
+                    payment.Customer.Address))
+                {
+                    <small>@payment.Customer.Address</small>
+                }
+            </article>
+
+            <article>
+                <span class="invoice-section-label">
+                    PAYMENT DETAILS
+                </span>
+
+                <strong>
+                    @FormatPaymentMethod(payment.PaymentMethod)
+                </strong>
+
+                @if (!string.IsNullOrWhiteSpace(
+                    payment.ReferenceNumber))
+                {
+                    <small>
+                        Reference:
+                        @payment.ReferenceNumber
+                    </small>
+                }
+                else
+                {
+                    <small>No external reference number</small>
+                }
+
+                <small>
+                    Securely recorded by an authenticated user
+                </small>
+            </article>
+
+            <article>
+                <span class="invoice-section-label">
+                    ACCOUNT POSITION
+                </span>
+
+                <strong>
+                    Balance after:
+                    @Currency(payment.BalanceAfter)
+                </strong>
+
+                <small>
+                    Balance before:
+                    @Currency(payment.BalanceBefore)
+                </small>
+
+                <small>
+                    Reduction:
+                    @Currency(payment.Amount)
+                </small>
+            </article>
+        </section>
+
+        <div class="invoice-table-wrap">
+            <table class="invoice-item-table">
+                <thead>
+                    <tr>
+                        <th>Allocation</th>
+                        <th>Date</th>
+                        <th>Status after payment</th>
+                        <th class="invoice-number-cell">
+                            Amount
+                        </th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @foreach (var allocation in payment.Allocations
+                        .OrderBy(item => item.Sale.SoldAtUtc))
+                    {
+                        <tr @key="allocation.Id">
+                            <td>
+                                <a class="invoice-table-link"
+                                   href="@($"/sales/{allocation.SaleId}/invoice")">
+                                    @allocation.Sale.InvoiceNumber
+                                </a>
+
+                                <small>
+                                    Applied to the oldest unpaid sale
+                                </small>
+                            </td>
+
+                            <td>
+                                @FormatDateTime(
+                                    allocation.Sale.SoldAtUtc)
+                            </td>
+
+                            <td>
+                                <strong>
+                                    @FormatSaleStatus(
+                                        allocation.Sale.Status)
+                                </strong>
+
+                                <small>
+                                    Current due:
+                                    @Currency(
+                                        allocation.Sale.DueAmount)
+                                </small>
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                @Currency(allocation.Amount)
+                            </td>
+                        </tr>
+                    }
+
+                    @if (payment.AppliedToAccountBalanceAmount > 0)
+                    {
+                        <tr>
+                            <td>
+                                <strong>Account opening balance</strong>
+
+                                <small>
+                                    Amount not linked to a sales invoice
+                                </small>
+                            </td>
+
+                            <td>
+                                @FormatDateTime(payment.ReceivedAtUtc)
+                            </td>
+
+                            <td>
+                                <strong>Account balance reduced</strong>
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                @Currency(
+                                    payment
+                                        .AppliedToAccountBalanceAmount)
+                            </td>
+                        </tr>
+                    }
+
+                    @if (payment.Allocations.Count == 0 &&
+                        payment.AppliedToAccountBalanceAmount <= 0)
+                    {
+                        <tr>
+                            <td colspan="4">
+                                <strong>
+                                    No document allocation was recorded.
+                                </strong>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="invoice-lower-grid">
+            <section class="invoice-notes-panel">
+                <span class="invoice-section-label">
+                    RECEIPT DETAILS
+                </span>
+
+                @if (!string.IsNullOrWhiteSpace(payment.Notes))
+                {
+                    <p>
+                        <strong>Notes:</strong>
+                        @payment.Notes
+                    </p>
+                }
+                else
+                {
+                    <p>
+                        No additional payment notes were recorded.
+                    </p>
+                }
+
+                <div class="invoice-return-notice">
+                    <strong>
+                        Payment allocations were processed
+                        transactionally
+                    </strong>
+
+                    <small>
+                        The customer balance and linked invoice dues
+                        were updated together in one secure operation.
+                    </small>
+                </div>
+            </section>
+
+            <section class="invoice-total-panel">
+                <div>
+                    <span>Applied to sales</span>
+
+                    <strong>
+                        @Currency(payment.AppliedToSalesAmount)
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Applied to account balance</span>
+
+                    <strong>
+                        @Currency(
+                            payment.AppliedToAccountBalanceAmount)
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Previous balance</span>
+
+                    <strong>
+                        @Currency(payment.BalanceBefore)
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Remaining balance</span>
+
+                    <strong>
+                        @Currency(payment.BalanceAfter)
+                    </strong>
+                </div>
+
+                <div class="invoice-current-total">
+                    <span>Amount received</span>
+
+                    <strong>
+                        @Currency(payment.Amount)
+                    </strong>
+                </div>
+            </section>
+        </div>
+
+        <footer class="invoice-document-footer">
+            <div>
+                <strong>@profile.PharmacyName</strong>
+
+                <span>
+                    Computer-generated customer payment receipt ·
+                    No signature required
+                </span>
+            </div>
+
+            <div>
+                <span>Developed by Addin Alt</span>
+                <strong>@payment.ReceiptNumber</strong>
+            </div>
+        </footer>
+    </section>
+}
+
+@code {
+    [Parameter]
+    public Guid CustomerPaymentId { get; set; }
+
+    private CustomerPayment? payment;
+    private PharmacyProfile profile = new();
+
+    private string? loadError;
+    private bool isLoading = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadReceiptAsync();
+    }
+
+    private async Task LoadReceiptAsync()
+    {
+        isLoading = true;
+        loadError = null;
+
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+
+            var database =
+                scope.ServiceProvider
+                    .GetRequiredService<ApplicationDbContext>();
+
+            payment =
+                await database.CustomerPayments
+                    .AsNoTracking()
+                    .AsSplitQuery()
+                    .Include(item => item.Customer)
+                    .Include(item => item.Allocations)
+                        .ThenInclude(item => item.Sale)
+                    .SingleOrDefaultAsync(item =>
+                        item.Id == CustomerPaymentId);
+
+            if (payment is null)
+            {
+                loadError =
+                    "The requested customer payment receipt was not " +
+                    "found.";
+
+                return;
+            }
+
+            profile =
+                await database.PharmacyProfiles
+                    .AsNoTracking()
+                    .OrderBy(item => item.CreatedAtUtc)
+                    .FirstOrDefaultAsync()
+                ?? new PharmacyProfile();
+        }
+        catch (Exception exception)
+        {
+            loadError =
+                "The customer payment receipt could not be loaded: " +
+                exception.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task PrintAsync()
+    {
+        await JavaScript.InvokeVoidAsync("window.print");
+    }
+
+    private string Currency(decimal amount)
+    {
+        var symbol =
+            string.IsNullOrWhiteSpace(profile.CurrencySymbol)
+                ? "৳"
+                : profile.CurrencySymbol;
+
+        return $"{symbol}{amount:N2}";
+    }
+
+    private string FormatDateTime(DateTime utcDateTime)
+    {
+        DateTime localDateTime;
+
+        try
+        {
+            var timeZone =
+                TimeZoneInfo.FindSystemTimeZoneById(
+                    profile.TimeZoneId);
+
+            localDateTime =
+                TimeZoneInfo.ConvertTimeFromUtc(
+                    DateTime.SpecifyKind(
+                        utcDateTime,
+                        DateTimeKind.Utc),
+                    timeZone);
+        }
+        catch
+        {
+            localDateTime = utcDateTime.ToLocalTime();
+        }
+
+        return localDateTime.ToString(
+            "dd MMM yyyy, hh:mm tt");
+    }
+
+    private static string FormatPaymentMethod(
+        PaymentMethod method)
+    {
+        return method switch
+        {
+            PaymentMethod.MobileBanking =>
+                "Mobile banking",
+
+            PaymentMethod.BankTransfer =>
+                "Bank transfer",
+
+            _ => method.ToString()
+        };
+    }
+
+    private static string FormatSaleStatus(
+        SaleStatus status)
+    {
+        return status switch
+        {
+            SaleStatus.PartiallyPaid =>
+                "Partially paid",
+
+            _ => status.ToString()
+        };
+    }
+}
