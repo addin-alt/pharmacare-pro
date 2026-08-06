@@ -1,0 +1,1107 @@
+@page "/supplier-returns"
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using PharmaCarePro.Domain.Entities
+@using PharmaCarePro.Web.Data
+@using PharmaCarePro.Web.Services.SupplierReturns
+
+@inject IServiceScopeFactory ScopeFactory
+@inject SupplierReturnService SupplierReturnService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Supplier Returns | PharmaCare Pro</PageTitle>
+
+<div class="page-heading module-heading return-page-heading">
+    <div>
+        <span class="eyebrow">PURCHASE REVERSAL</span>
+        <h1>Supplier returns</h1>
+        <p>
+            Return available stock to suppliers, reduce purchase
+            payables and record supplier refunds.
+        </p>
+    </div>
+
+    <a class="button button-secondary" href="/purchases">
+        Open Purchases
+    </a>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <div class="form-status return-status
+         @(statusIsError ? "status-error" : "status-success")">
+        @statusMessage
+    </div>
+}
+
+<section class="return-summary-grid">
+    <article class="return-summary-card">
+        <span>Returns recorded</span>
+        <strong>@supplierReturns.Count</strong>
+        <small>Recent supplier-return transactions</small>
+    </article>
+
+    <article class="return-summary-card">
+        <span>Returned value</span>
+        <strong>৳@TotalReturnedValue.ToString("N2")</strong>
+        <small>Purchase value reversed</small>
+    </article>
+
+    <article class="return-summary-card">
+        <span>Payable reductions</span>
+        <strong>৳@TotalPayableReduction.ToString("N2")</strong>
+        <small>Supplier balances cancelled</small>
+    </article>
+
+    <article class="return-summary-card">
+        <span>Supplier refunds</span>
+        <strong>৳@TotalSupplierRefund.ToString("N2")</strong>
+        <small>Money recovered from suppliers</small>
+    </article>
+</section>
+
+@if (isLoading)
+{
+    <section class="dashboard-panel return-loading-panel">
+        <strong>Loading returnable purchases...</strong>
+        <p>Reading purchases, batches and return history from Supabase.</p>
+    </section>
+}
+else
+{
+    <div class="return-workspace">
+        <section class="dashboard-panel return-sale-panel">
+            <div class="panel-heading">
+                <div>
+                    <span class="return-panel-kicker">
+                        ORIGINAL PURCHASE
+                    </span>
+
+                    <h2>Select a purchase</h2>
+
+                    <p>
+                        Choose a received purchase containing available
+                        stock.
+                    </p>
+                </div>
+            </div>
+
+            <input class="return-search"
+                   type="search"
+                   @bind="searchText"
+                   @bind:event="oninput"
+                   placeholder="Search purchase, supplier or invoice..." />
+
+            @if (!FilteredPurchases.Any())
+            {
+                <div class="return-empty-state">
+                    <strong>No returnable purchases found</strong>
+
+                    <p>
+                        Fully returned, cancelled and unavailable stock
+                        is excluded automatically.
+                    </p>
+                </div>
+            }
+            else
+            {
+                <div class="return-sale-list">
+                    @foreach (var purchase in FilteredPurchases)
+                    {
+                        <button type="button"
+                                class="return-sale-card
+                                    @(purchase.Id == selectedPurchaseId
+                                        ? "is-selected"
+                                        : string.Empty)"
+                                @key="purchase.Id"
+                                @onclick="() =>
+                                    SelectPurchase(purchase.Id)">
+                            <span class="return-invoice-icon">PUR</span>
+
+                            <span class="return-sale-details">
+                                <strong>
+                                    @purchase.PurchaseNumber
+                                </strong>
+
+                                <small>
+                                    @(purchase.Supplier?.Name ??
+                                        "Unknown supplier")
+                                </small>
+
+                                <small>
+                                    @(purchase.PurchaseDateUtc
+                                        .ToLocalTime()
+                                        .ToString(
+                                            "dd MMM yyyy, hh:mm tt"))
+                                </small>
+                            </span>
+
+                            <span class="return-sale-value">
+                                <strong>
+                                    ৳@purchase.GrandTotal.ToString("N2")
+                                </strong>
+
+                                <small>
+                                    @GetReturnableAvailableUnits(purchase)
+                                    unit(s) available
+                                </small>
+                            </span>
+                        </button>
+                    }
+                </div>
+            }
+        </section>
+
+        <section class="dashboard-panel return-entry-panel">
+            @if (SelectedPurchase is null)
+            {
+                <div class="return-empty-state return-select-prompt">
+                    <span>↪</span>
+                    <strong>Select a purchase</strong>
+
+                    <p>
+                        Choose a purchase from the list to begin a
+                        supplier return.
+                    </p>
+                </div>
+            }
+            else
+            {
+                <div class="panel-heading">
+                    <div>
+                        <span class="return-panel-kicker">
+                            SUPPLIER RETURN
+                        </span>
+
+                        <h2>@SelectedPurchase.PurchaseNumber</h2>
+
+                        <p>
+                            @(SelectedPurchase.Supplier?.Name ??
+                                "Unknown supplier")
+                            ·
+                            @SelectedPurchase.Status
+                        </p>
+                    </div>
+
+                    <span class="return-due-pill">
+                        Due ৳@SelectedPurchase.DueAmount.ToString("N2")
+                    </span>
+                </div>
+
+                <EditForm Model="form"
+                          FormName="supplier-return"
+                          OnValidSubmit="RecordReturnAsync">
+                    <DataAnnotationsValidator />
+
+                    <div class="return-line-list">
+                        @foreach (var line in returnLines)
+                        {
+                            <article class="return-line-card"
+                                     @key="line.PurchaseItemId">
+                                <div class="return-line-heading">
+                                    <div>
+                                        <strong>@line.DisplayName</strong>
+
+                                        <small>
+                                            Batch @line.BatchNumber ·
+                                            @line.AvailableQuantity
+                                            available in stock
+                                        </small>
+                                    </div>
+
+                                    <span>
+                                        @line.MaximumQuantity paid +
+                                        @line.MaximumFreeQuantity free
+                                        remaining
+                                    </span>
+                                </div>
+
+                                <div class="return-line-controls">
+                                    <div class="form-field">
+                                        <label>Paid quantity</label>
+
+                                        <InputNumber
+                                            @bind-Value="line.Quantity"
+                                            min="0"
+                                            max="@line.MaximumQuantity" />
+                                    </div>
+
+                                    <div class="form-field">
+                                        <label>Free quantity</label>
+
+                                        <InputNumber
+                                            @bind-Value="line.FreeQuantity"
+                                            min="0"
+                                            max="@line.MaximumFreeQuantity" />
+                                    </div>
+
+                                    <div class="return-line-estimate">
+                                        <span>Total units selected</span>
+
+                                        <strong>
+                                            @(line.Quantity +
+                                                line.FreeQuantity)
+                                        </strong>
+                                    </div>
+
+                                    <div class="return-line-estimate">
+                                        <span>Estimated value</span>
+
+                                        <strong>
+                                            ৳@(EstimateLine(line)
+                                                .ToString("N2"))
+                                        </strong>
+                                    </div>
+                                </div>
+                            </article>
+                        }
+                    </div>
+
+                    <div class="return-form-grid">
+                        <div class="form-field">
+                            <label>Return reason</label>
+
+                            <InputText
+                                @bind-Value="form.Reason"
+                                placeholder="Example: Damaged supplier shipment" />
+
+                            <ValidationMessage
+                                For="() => form.Reason" />
+                        </div>
+
+                        <div class="form-field">
+                            <label>Supplier refund method</label>
+
+                            <InputSelect
+                                @bind-Value="form.RefundMethod">
+                                @foreach (var method in RefundMethods)
+                                {
+                                    <option value="@method">
+                                        @FormatPaymentMethod(method)
+                                    </option>
+                                }
+                            </InputSelect>
+
+                            <small class="return-field-help">
+                                Used only when the supplier must return
+                                money.
+                            </small>
+                        </div>
+
+                        <div class="form-field return-notes-field">
+                            <label>Return notes</label>
+
+                            <InputTextArea
+                                @bind-Value="form.Notes"
+                                rows="3"
+                                placeholder="Optional shipment, credit-note or refund details" />
+
+                            <ValidationMessage
+                                For="() => form.Notes" />
+                        </div>
+                    </div>
+
+                    <div class="return-settlement-preview">
+                        <div>
+                            <span>Return value</span>
+
+                            <strong>
+                                ৳@EstimatedGrossReturn.ToString("N2")
+                            </strong>
+                        </div>
+
+                        <div>
+                            <span>Payable reduction</span>
+
+                            <strong>
+                                ৳@(EstimatedPayableReduction
+                                    .ToString("N2"))
+                            </strong>
+                        </div>
+
+                        <div>
+                            <span>Supplier refund</span>
+
+                            <strong class="return-refund-value">
+                                ৳@EstimatedSupplierRefund.ToString("N2")
+                            </strong>
+                        </div>
+                    </div>
+
+                    <div class="return-safety-note">
+                        <span>!</span>
+
+                        <p>
+                            Only units currently available in inventory
+                            can be returned. Sold, disposed or otherwise
+                            unavailable stock is protected automatically.
+                        </p>
+                    </div>
+
+                    <button type="submit"
+                            class="button button-primary
+                                return-submit-button"
+                            disabled="@isSaving">
+                        @(isSaving
+                            ? "Recording supplier return..."
+                            : "Record supplier return")
+                    </button>
+                </EditForm>
+            }
+        </section>
+    </div>
+
+    <section class="dashboard-panel return-history-panel">
+        <div class="panel-heading">
+            <div>
+                <span class="return-panel-kicker">
+                    SUPPLIER RETURN LEDGER
+                </span>
+
+                <h2>Recent supplier returns</h2>
+
+                <p>
+                    Recorded stock removals, payable reductions and
+                    supplier refunds.
+                </p>
+            </div>
+        </div>
+
+        @if (!supplierReturns.Any())
+        {
+            <div class="return-empty-state">
+                <strong>No supplier returns recorded</strong>
+                <p>The first completed return will appear here.</p>
+            </div>
+        }
+        else
+        {
+            <div class="return-history-wrap">
+                <table class="return-history-table">
+                    <thead>
+                        <tr>
+                            <th>Return</th>
+                            <th>Purchase</th>
+                            <th>Supplier</th>
+                            <th>Items</th>
+                            <th>Settlement</th>
+                            <th>Recorded by</th>
+                            <th class="return-number-column">
+                                Value
+                            </th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @foreach (var supplierReturn in supplierReturns)
+                        {
+                            <tr @key="supplierReturn.Id">
+                                <td>
+                                    <strong>
+                                        @supplierReturn.ReturnNumber
+                                    </strong>
+
+                                    <small>
+                                        @(supplierReturn.ReturnedAtUtc
+                                            .ToLocalTime()
+                                            .ToString(
+                                                "dd MMM yyyy, hh:mm tt"))
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <strong>
+                                        @(supplierReturn
+                                            .Purchase
+                                            .PurchaseNumber)
+                                    </strong>
+
+                                    <small>
+                                        @supplierReturn.Reason
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <strong>
+                                        @supplierReturn.Supplier.Name
+                                    </strong>
+
+                                    <small>
+                                        @(supplierReturn
+                                            .Supplier
+                                            .SupplierCode)
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <strong>
+                                        @supplierReturn.Items.Sum(item =>
+                                            item.Quantity +
+                                            item.FreeQuantity)
+                                        unit(s)
+                                    </strong>
+
+                                    <small>
+                                        @supplierReturn.Items.Count
+                                        line(s)
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <strong>
+                                        Payable −৳@(supplierReturn
+                                            .PayableReductionAmount
+                                            .ToString("N2"))
+                                    </strong>
+
+                                    <small>
+                                        Refund ৳@(supplierReturn
+                                            .SupplierRefundAmount
+                                            .ToString("N2"))
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <strong>Authenticated user</strong>
+                                    <small>Securely recorded</small>
+                                </td>
+
+                                <td class="return-number-column">
+                                    <strong class="return-negative-value">
+                                        −৳@(supplierReturn
+                                            .GrossReturnAmount
+                                            .ToString("N2"))
+                                    </strong>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+
+@code {
+    private static readonly PaymentMethod[] RefundMethods =
+    [
+        PaymentMethod.Cash,
+        PaymentMethod.Card,
+        PaymentMethod.MobileBanking,
+        PaymentMethod.BankTransfer
+    ];
+
+    private List<Purchase> purchases = [];
+    private List<SupplierReturn> supplierReturns = [];
+    private List<MedicineBatch> batches = [];
+    private List<SupplierReturnLineForm> returnLines = [];
+
+    private SupplierReturnForm form = new();
+
+    private Guid? selectedPurchaseId;
+    private string searchText = string.Empty;
+    private string? statusMessage;
+
+    private bool statusIsError;
+    private bool isLoading = true;
+    private bool isSaving;
+
+    private IEnumerable<Purchase> FilteredPurchases
+    {
+        get
+        {
+            var returnablePurchases =
+                purchases.Where(purchase =>
+                    purchase.Status == PurchaseStatus.Received &&
+                    GetReturnableAvailableUnits(purchase) > 0);
+
+            if (string.IsNullOrWhiteSpace(searchText))
+            {
+                return returnablePurchases;
+            }
+
+            var search = searchText.Trim();
+
+            return returnablePurchases.Where(purchase =>
+                purchase.PurchaseNumber.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ||
+                (purchase.Supplier?.Name.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (purchase.Supplier?.SupplierCode.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (purchase.SupplierInvoiceNumber?.Contains(
+                    search,
+                    StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+    }
+
+    private Purchase? SelectedPurchase =>
+        purchases.FirstOrDefault(purchase =>
+            purchase.Id == selectedPurchaseId);
+
+    private decimal TotalReturnedValue =>
+        supplierReturns.Sum(item =>
+            item.GrossReturnAmount);
+
+    private decimal TotalPayableReduction =>
+        supplierReturns.Sum(item =>
+            item.PayableReductionAmount);
+
+    private decimal TotalSupplierRefund =>
+        supplierReturns.Sum(item =>
+            item.SupplierRefundAmount);
+
+    private decimal EstimatedGrossReturn =>
+        Math.Round(
+            returnLines.Sum(EstimateLine),
+            2,
+            MidpointRounding.AwayFromZero);
+
+    private decimal EstimatedPayableReduction =>
+        SelectedPurchase is null
+            ? 0
+            : Math.Min(
+                SelectedPurchase.DueAmount,
+                EstimatedGrossReturn);
+
+    private decimal EstimatedSupplierRefund =>
+        Math.Max(
+            0,
+            EstimatedGrossReturn -
+            EstimatedPayableReduction);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        isLoading = true;
+
+        using var scope = ScopeFactory.CreateScope();
+
+        var database =
+            scope.ServiceProvider
+                .GetRequiredService<ApplicationDbContext>();
+
+        purchases =
+            await database.Purchases
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Include(purchase => purchase.Supplier)
+                .Include(purchase => purchase.Items)
+                    .ThenInclude(item => item.ReturnItems)
+                .Include(purchase => purchase.Returns)
+                    .ThenInclude(supplierReturn =>
+                        supplierReturn.Items)
+                .OrderByDescending(purchase =>
+                    purchase.PurchaseDateUtc)
+                .Take(100)
+                .ToListAsync();
+
+        supplierReturns =
+            await database.SupplierReturns
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Include(supplierReturn =>
+                    supplierReturn.Purchase)
+                .Include(supplierReturn =>
+                    supplierReturn.Supplier)
+                .Include(supplierReturn =>
+                    supplierReturn.Items)
+                .OrderByDescending(supplierReturn =>
+                    supplierReturn.ReturnedAtUtc)
+                .Take(40)
+                .ToListAsync();
+
+        var medicineIds =
+            purchases
+                .SelectMany(purchase =>
+                    purchase.Items)
+                .Select(item => item.MedicineId)
+                .Distinct()
+                .ToList();
+
+        batches =
+            medicineIds.Count == 0
+                ? []
+                : await database.MedicineBatches
+                    .AsNoTracking()
+                    .Where(batch =>
+                        medicineIds.Contains(batch.MedicineId))
+                    .ToListAsync();
+
+        var previousSelection = selectedPurchaseId;
+
+        var firstReturnablePurchase =
+            purchases.FirstOrDefault(purchase =>
+                purchase.Status == PurchaseStatus.Received &&
+                GetReturnableAvailableUnits(purchase) > 0);
+
+        var selectedStillReturnable =
+            purchases.Any(purchase =>
+                purchase.Id == previousSelection &&
+                purchase.Status == PurchaseStatus.Received &&
+                GetReturnableAvailableUnits(purchase) > 0);
+
+        selectedPurchaseId =
+            selectedStillReturnable
+                ? previousSelection
+                : firstReturnablePurchase?.Id;
+
+        BuildReturnLines();
+
+        isLoading = false;
+    }
+
+    private void SelectPurchase(Guid purchaseId)
+    {
+        selectedPurchaseId = purchaseId;
+        form = new SupplierReturnForm();
+        statusMessage = null;
+        statusIsError = false;
+
+        BuildReturnLines();
+    }
+
+    private void BuildReturnLines()
+    {
+        returnLines = [];
+
+        if (SelectedPurchase is null)
+        {
+            return;
+        }
+
+        foreach (var item in SelectedPurchase.Items
+            .OrderBy(item => item.MedicineName)
+            .ThenBy(item => item.BatchNumber))
+        {
+            var returnedQuantity =
+                item.ReturnItems.Sum(returnItem =>
+                    returnItem.Quantity);
+
+            var returnedFreeQuantity =
+                item.ReturnItems.Sum(returnItem =>
+                    returnItem.FreeQuantity);
+
+            var maximumQuantity =
+                Math.Max(
+                    0,
+                    item.Quantity -
+                    returnedQuantity);
+
+            var maximumFreeQuantity =
+                Math.Max(
+                    0,
+                    item.FreeQuantity -
+                    returnedFreeQuantity);
+
+            var availableQuantity =
+                GetBatchAvailableQuantity(item);
+
+            if (maximumQuantity +
+                maximumFreeQuantity <= 0 ||
+                availableQuantity <= 0)
+            {
+                continue;
+            }
+
+            returnLines.Add(
+                new SupplierReturnLineForm
+                {
+                    PurchaseItemId = item.Id,
+                    DisplayName = item.MedicineName,
+                    BatchNumber = item.BatchNumber,
+                    MaximumQuantity =
+                        maximumQuantity,
+                    MaximumFreeQuantity =
+                        maximumFreeQuantity,
+                    AvailableQuantity =
+                        availableQuantity
+                });
+        }
+    }
+
+    private async Task RecordReturnAsync()
+    {
+        if (SelectedPurchase is null)
+        {
+            statusIsError = true;
+            statusMessage =
+                "Select a valid purchase.";
+            return;
+        }
+
+        var selectedLines =
+            returnLines
+                .Where(line =>
+                    line.Quantity +
+                    line.FreeQuantity > 0)
+                .ToList();
+
+        if (selectedLines.Count == 0)
+        {
+            statusIsError = true;
+            statusMessage =
+                "Enter at least one paid or free return quantity.";
+            return;
+        }
+
+        foreach (var line in selectedLines)
+        {
+            if (line.Quantity >
+                line.MaximumQuantity)
+            {
+                statusIsError = true;
+                statusMessage =
+                    $"{line.DisplayName} paid return quantity " +
+                    "exceeds the remaining purchased quantity.";
+                return;
+            }
+
+            if (line.FreeQuantity >
+                line.MaximumFreeQuantity)
+            {
+                statusIsError = true;
+                statusMessage =
+                    $"{line.DisplayName} free return quantity " +
+                    "exceeds the remaining free quantity.";
+                return;
+            }
+
+            if (line.Quantity +
+                line.FreeQuantity >
+                line.AvailableQuantity)
+            {
+                statusIsError = true;
+                statusMessage =
+                    $"{line.DisplayName} has only " +
+                    $"{line.AvailableQuantity} available unit(s) " +
+                    "in inventory.";
+                return;
+            }
+        }
+
+        isSaving = true;
+        statusMessage = null;
+        statusIsError = false;
+
+        try
+        {
+            var authenticationState =
+                await AuthenticationStateProvider
+                    .GetAuthenticationStateAsync();
+
+            var recordedBy =
+                authenticationState.User.Identity?.Name;
+
+            if (string.IsNullOrWhiteSpace(recordedBy))
+            {
+                recordedBy = "Authenticated user";
+            }
+
+            var result =
+                await SupplierReturnService.RecordAsync(
+                    new SupplierReturnRequest(
+                        SelectedPurchase.Id,
+                        selectedLines
+                            .Select(line =>
+                                new SupplierReturnItemRequest(
+                                    line.PurchaseItemId,
+                                    line.Quantity,
+                                    line.FreeQuantity))
+                            .ToList(),
+                        form.Reason,
+                        EstimatedSupplierRefund > 0
+                            ? form.RefundMethod
+                            : null,
+                        form.Notes,
+                        recordedBy));
+
+            statusMessage =
+                $"Supplier return {result.ReturnNumber} recorded. " +
+                $"{result.ReturnedQuantity} paid and " +
+                $"{result.ReturnedFreeQuantity} free unit(s) " +
+                "were removed from inventory. " +
+                $"Payable reduction: " +
+                $"৳{result.PayableReductionAmount:N2}. " +
+                $"Supplier refund: " +
+                $"৳{result.SupplierRefundAmount:N2}.";
+
+            form = new SupplierReturnForm();
+            searchText = string.Empty;
+
+            await LoadDataAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            statusIsError = true;
+            statusMessage = exception.Message;
+        }
+        catch (InvalidOperationException exception)
+        {
+            statusIsError = true;
+            statusMessage = exception.Message;
+        }
+        catch (DbUpdateException)
+        {
+            statusIsError = true;
+            statusMessage =
+                "The supplier return could not be saved. " +
+                "Refresh the page and try again.";
+        }
+        catch (Exception exception)
+        {
+            statusIsError = true;
+            statusMessage =
+                "The supplier return could not be recorded: " +
+                exception.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private int GetReturnableAvailableUnits(
+        Purchase purchase)
+    {
+        return purchase.Items.Sum(item =>
+        {
+            var returnedPaid =
+                item.ReturnItems.Sum(returnItem =>
+                    returnItem.Quantity);
+
+            var returnedFree =
+                item.ReturnItems.Sum(returnItem =>
+                    returnItem.FreeQuantity);
+
+            var remaining =
+                Math.Max(
+                    0,
+                    item.Quantity -
+                    returnedPaid) +
+                Math.Max(
+                    0,
+                    item.FreeQuantity -
+                    returnedFree);
+
+            return Math.Min(
+                remaining,
+                GetBatchAvailableQuantity(item));
+        });
+    }
+
+    private int GetBatchAvailableQuantity(
+        PurchaseItem item)
+    {
+        return batches
+            .Where(batch =>
+                batch.MedicineId == item.MedicineId &&
+                batch.BatchNumber.Equals(
+                    item.BatchNumber,
+                    StringComparison.OrdinalIgnoreCase))
+            .Select(batch =>
+                batch.AvailableQuantity)
+            .SingleOrDefault();
+    }
+
+    private decimal EstimateLine(
+        SupplierReturnLineForm line)
+    {
+        if (SelectedPurchase is null ||
+            line.Quantity <= 0)
+        {
+            return 0;
+        }
+
+        var item =
+            SelectedPurchase.Items.Single(item =>
+                item.Id == line.PurchaseItemId);
+
+        var entitlementByItem =
+            CalculateLineEntitlements(
+                SelectedPurchase);
+
+        var originalEntitlement =
+            entitlementByItem.GetValueOrDefault(
+                item.Id);
+
+        var previouslyReturnedAmount =
+            Math.Round(
+                item.ReturnItems.Sum(returnItem =>
+                    returnItem.LineReturnAmount),
+                2,
+                MidpointRounding.AwayFromZero);
+
+        var previouslyReturnedQuantity =
+            item.ReturnItems.Sum(returnItem =>
+                returnItem.Quantity);
+
+        var remainingQuantity =
+            item.Quantity -
+            previouslyReturnedQuantity;
+
+        var remainingAmount =
+            Math.Max(
+                0,
+                Math.Round(
+                    originalEntitlement -
+                    previouslyReturnedAmount,
+                    2,
+                    MidpointRounding.AwayFromZero));
+
+        if (line.Quantity >= remainingQuantity)
+        {
+            return remainingAmount;
+        }
+
+        return Math.Min(
+            remainingAmount,
+            Math.Round(
+                originalEntitlement /
+                item.Quantity *
+                line.Quantity,
+                2,
+                MidpointRounding.AwayFromZero));
+    }
+
+    private static Dictionary<Guid, decimal>
+        CalculateLineEntitlements(
+            Purchase purchase)
+    {
+        var items =
+            purchase.Items
+                .OrderBy(item => item.Id)
+                .ToList();
+
+        var result =
+            new Dictionary<Guid, decimal>();
+
+        if (items.Count == 0)
+        {
+            return result;
+        }
+
+        var originalGross =
+            Math.Round(
+                purchase.GrandTotal +
+                purchase.Returns.Sum(item =>
+                    item.GrossReturnAmount),
+                2,
+                MidpointRounding.AwayFromZero);
+
+        var lineTotal =
+            items.Sum(item =>
+                item.LineTotal);
+
+        if (lineTotal <= 0)
+        {
+            foreach (var item in items)
+            {
+                result[item.Id] = 0;
+            }
+
+            return result;
+        }
+
+        decimal assigned = 0;
+
+        for (var index = 0;
+             index < items.Count;
+             index++)
+        {
+            var item = items[index];
+
+            decimal entitlement;
+
+            if (index == items.Count - 1)
+            {
+                entitlement =
+                    Math.Round(
+                        originalGross -
+                        assigned,
+                        2,
+                        MidpointRounding.AwayFromZero);
+            }
+            else
+            {
+                entitlement =
+                    Math.Round(
+                        originalGross *
+                        item.LineTotal /
+                        lineTotal,
+                        2,
+                        MidpointRounding.AwayFromZero);
+
+                assigned =
+                    Math.Round(
+                        assigned +
+                        entitlement,
+                        2,
+                        MidpointRounding.AwayFromZero);
+            }
+
+            result[item.Id] =
+                Math.Max(0, entitlement);
+        }
+
+        return result;
+    }
+
+    private static string FormatPaymentMethod(
+        PaymentMethod method)
+    {
+        return method switch
+        {
+            PaymentMethod.MobileBanking =>
+                "Mobile banking",
+
+            PaymentMethod.BankTransfer =>
+                "Bank transfer",
+
+            _ => method.ToString()
+        };
+    }
+
+    private sealed class SupplierReturnForm
+    {
+        [Required(ErrorMessage = "Return reason is required.")]
+        [StringLength(200)]
+        public string Reason { get; set; } = string.Empty;
+
+        public PaymentMethod RefundMethod { get; set; } =
+            PaymentMethod.Cash;
+
+        [StringLength(500)]
+        public string? Notes { get; set; }
+    }
+
+    private sealed class SupplierReturnLineForm
+    {
+        public Guid PurchaseItemId { get; set; }
+
+        public string DisplayName { get; set; } =
+            string.Empty;
+
+        public string BatchNumber { get; set; } =
+            string.Empty;
+
+        public int MaximumQuantity { get; set; }
+
+        public int MaximumFreeQuantity { get; set; }
+
+        public int AvailableQuantity { get; set; }
+
+        public int Quantity { get; set; }
+
+        public int FreeQuantity { get; set; }
+    }
+}
