@@ -306,6 +306,58 @@
                             <ValidationMessage
                                 For="() => form.PrescriptionPrefix" />
                         </div>
+
+                        <div class="form-field">
+                            <label>Customer payment prefix</label>
+
+                            <InputText
+                                @bind-Value="
+                                    form.CustomerPaymentPrefix"
+                                placeholder="CPY" />
+
+                            <ValidationMessage
+                                For="() =>
+                                    form.CustomerPaymentPrefix" />
+                        </div>
+
+                        <div class="form-field">
+                            <label>Supplier payment prefix</label>
+
+                            <InputText
+                                @bind-Value="
+                                    form.SupplierPaymentPrefix"
+                                placeholder="SPY" />
+
+                            <ValidationMessage
+                                For="() =>
+                                    form.SupplierPaymentPrefix" />
+                        </div>
+
+                        <div class="form-field">
+                            <label>Sales return prefix</label>
+
+                            <InputText
+                                @bind-Value="
+                                    form.SaleReturnPrefix"
+                                placeholder="SRT" />
+
+                            <ValidationMessage
+                                For="() =>
+                                    form.SaleReturnPrefix" />
+                        </div>
+
+                        <div class="form-field">
+                            <label>Supplier return prefix</label>
+
+                            <InputText
+                                @bind-Value="
+                                    form.SupplierReturnPrefix"
+                                placeholder="PRT" />
+
+                            <ValidationMessage
+                                For="() =>
+                                    form.SupplierReturnPrefix" />
+                        </div>
                     </div>
                 </div>
 
@@ -453,21 +505,49 @@
                 <div>
                     <span>Sales invoice</span>
                     <strong>
-                        @NormalizedInvoicePrefix-20260805-001
+                        @NormalizedInvoicePrefix-20260807010203-000001
                     </strong>
                 </div>
 
                 <div>
                     <span>Purchase receipt</span>
                     <strong>
-                        @NormalizedPurchasePrefix-20260805-001
+                        @NormalizedPurchasePrefix-20260807010203-000001
                     </strong>
                 </div>
 
                 <div>
                     <span>Prescription</span>
                     <strong>
-                        @NormalizedPrescriptionPrefix-20260805-001
+                        @NormalizedPrescriptionPrefix-20260807010203-000001
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Customer payment</span>
+                    <strong>
+                        @NormalizedCustomerPaymentPrefix-20260807010203-000001
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Supplier payment</span>
+                    <strong>
+                        @NormalizedSupplierPaymentPrefix-20260807010203-000001
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Sales return</span>
+                    <strong>
+                        @NormalizedSaleReturnPrefix-20260807010203-000001
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Supplier return</span>
+                    <strong>
+                        @NormalizedSupplierReturnPrefix-20260807010203-000001
                     </strong>
                 </div>
             </div>
@@ -553,6 +633,26 @@
     private string NormalizedPrescriptionPrefix =>
         NormalizePrefix(form.PrescriptionPrefix, "RX");
 
+    private string NormalizedCustomerPaymentPrefix =>
+        NormalizePrefix(
+            form.CustomerPaymentPrefix,
+            "CPY");
+
+    private string NormalizedSupplierPaymentPrefix =>
+        NormalizePrefix(
+            form.SupplierPaymentPrefix,
+            "SPY");
+
+    private string NormalizedSaleReturnPrefix =>
+        NormalizePrefix(
+            form.SaleReturnPrefix,
+            "SRT");
+
+    private string NormalizedSupplierReturnPrefix =>
+        NormalizePrefix(
+            form.SupplierReturnPrefix,
+            "PRT");
+
     protected override async Task OnInitializedAsync()
     {
         await LoadProfileAsync();
@@ -599,6 +699,14 @@
                 PurchasePrefix = profile.PurchasePrefix,
                 PrescriptionPrefix =
                     profile.PrescriptionPrefix,
+                CustomerPaymentPrefix =
+                    profile.CustomerPaymentPrefix,
+                SupplierPaymentPrefix =
+                    profile.SupplierPaymentPrefix,
+                SaleReturnPrefix =
+                    profile.SaleReturnPrefix,
+                SupplierReturnPrefix =
+                    profile.SupplierReturnPrefix,
                 ExpiryAlertDays = profile.ExpiryAlertDays,
                 LowStockAlertsEnabled =
                     profile.LowStockAlertsEnabled,
@@ -719,6 +827,18 @@
             profile.PrescriptionPrefix =
                 NormalizedPrescriptionPrefix;
 
+            profile.CustomerPaymentPrefix =
+                NormalizedCustomerPaymentPrefix;
+
+            profile.SupplierPaymentPrefix =
+                NormalizedSupplierPaymentPrefix;
+
+            profile.SaleReturnPrefix =
+                NormalizedSaleReturnPrefix;
+
+            profile.SupplierReturnPrefix =
+                NormalizedSupplierReturnPrefix;
+
             profile.ExpiryAlertDays =
                 form.ExpiryAlertDays;
 
@@ -746,6 +866,18 @@
 
             form.PrescriptionPrefix =
                 profile.PrescriptionPrefix;
+
+            form.CustomerPaymentPrefix =
+                profile.CustomerPaymentPrefix;
+
+            form.SupplierPaymentPrefix =
+                profile.SupplierPaymentPrefix;
+
+            form.SaleReturnPrefix =
+                profile.SaleReturnPrefix;
+
+            form.SupplierReturnPrefix =
+                profile.SupplierReturnPrefix;
 
             statusMessage =
                 "Pharmacy settings were saved successfully.";
@@ -855,6 +987,42 @@
                 "Use letters, numbers and hyphens only.")]
         [StringLength(12)]
         public string PrescriptionPrefix { get; set; } = "RX";
+
+        [Required]
+        [RegularExpression(
+            "^[A-Za-z0-9-]{2,12}$",
+            ErrorMessage =
+                "Use letters, numbers and hyphens only.")]
+        [StringLength(12)]
+        public string CustomerPaymentPrefix { get; set; } =
+            "CPY";
+
+        [Required]
+        [RegularExpression(
+            "^[A-Za-z0-9-]{2,12}$",
+            ErrorMessage =
+                "Use letters, numbers and hyphens only.")]
+        [StringLength(12)]
+        public string SupplierPaymentPrefix { get; set; } =
+            "SPY";
+
+        [Required]
+        [RegularExpression(
+            "^[A-Za-z0-9-]{2,12}$",
+            ErrorMessage =
+                "Use letters, numbers and hyphens only.")]
+        [StringLength(12)]
+        public string SaleReturnPrefix { get; set; } =
+            "SRT";
+
+        [Required]
+        [RegularExpression(
+            "^[A-Za-z0-9-]{2,12}$",
+            ErrorMessage =
+                "Use letters, numbers and hyphens only.")]
+        [StringLength(12)]
+        public string SupplierReturnPrefix { get; set; } =
+            "PRT";
 
         [Range(
             1,
