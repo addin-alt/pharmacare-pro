@@ -1,0 +1,533 @@
+@page "/payments/suppliers/{SupplierPaymentId:guid}/receipt"
+
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.JSInterop
+@using PharmaCarePro.Domain.Entities
+@using PharmaCarePro.Web.Data
+
+@inject IServiceScopeFactory ScopeFactory
+@inject IJSRuntime JavaScript
+
+<PageTitle>
+    @(payment is null
+        ? "Supplier Payment Voucher | PharmaCare Pro"
+        : $"{payment.PaymentNumber} | PharmaCare Pro")
+</PageTitle>
+
+<div class="page-heading module-heading invoice-screen-heading">
+    <div>
+        <span class="eyebrow">SUPPLIER ACCOUNT SETTLEMENT</span>
+        <h1>Supplier payment voucher</h1>
+
+        <p>
+            Review the amount paid, supplier balance and purchase
+            allocations for this settlement.
+        </p>
+    </div>
+
+    <div class="heading-actions">
+        <a class="button button-secondary"
+           href="/payments">
+            Back to Payments
+        </a>
+
+        @if (payment is not null)
+        {
+            <button class="button button-primary"
+                    type="button"
+                    @onclick="PrintAsync">
+                Print voucher
+            </button>
+        }
+    </div>
+</div>
+
+@if (isLoading)
+{
+    <section class="dashboard-panel invoice-loading-panel">
+        <strong>Loading supplier payment voucher...</strong>
+
+        <p>
+            Reading the payment, supplier and purchase allocations
+            from Supabase.
+        </p>
+    </section>
+}
+else if (!string.IsNullOrWhiteSpace(loadError))
+{
+    <div class="form-status status-error">
+        @loadError
+    </div>
+}
+else if (payment is not null)
+{
+    <section class="invoice-sheet">
+        <header class="invoice-document-header">
+            <div class="invoice-pharmacy-identity">
+                <div class="invoice-pharmacy-mark">৳</div>
+
+                <div>
+                    <h2>@profile.PharmacyName</h2>
+                    <strong>@profile.BranchName</strong>
+
+                    @if (!string.IsNullOrWhiteSpace(
+                        profile.Address))
+                    {
+                        <p>@profile.Address</p>
+                    }
+
+                    <div class="invoice-contact-line">
+                        @if (!string.IsNullOrWhiteSpace(
+                            profile.Phone))
+                        {
+                            <span>@profile.Phone</span>
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(
+                            profile.Email))
+                        {
+                            <span>@profile.Email</span>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="invoice-document-title">
+                <span class="invoice-status-badge
+                    invoice-status-completed">
+                    Paid
+                </span>
+
+                <h2>PAYMENT VOUCHER</h2>
+                <strong>@payment.PaymentNumber</strong>
+
+                <small>
+                    @FormatDateTime(payment.PaidAtUtc)
+                </small>
+            </div>
+        </header>
+
+        <section class="invoice-information-grid">
+            <article>
+                <span class="invoice-section-label">
+                    PAID TO
+                </span>
+
+                <strong>@payment.Supplier.Name</strong>
+
+                <small>
+                    Supplier code:
+                    @payment.Supplier.SupplierCode
+                </small>
+
+                @if (!string.IsNullOrWhiteSpace(
+                    payment.Supplier.ContactPerson))
+                {
+                    <small>
+                        Contact:
+                        @payment.Supplier.ContactPerson
+                    </small>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(
+                    payment.Supplier.Phone))
+                {
+                    <small>
+                        Phone:
+                        @payment.Supplier.Phone
+                    </small>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(
+                    payment.Supplier.Address))
+                {
+                    <small>@payment.Supplier.Address</small>
+                }
+            </article>
+
+            <article>
+                <span class="invoice-section-label">
+                    PAYMENT DETAILS
+                </span>
+
+                <strong>
+                    @FormatPaymentMethod(payment.PaymentMethod)
+                </strong>
+
+                @if (!string.IsNullOrWhiteSpace(
+                    payment.ReferenceNumber))
+                {
+                    <small>
+                        Reference:
+                        @payment.ReferenceNumber
+                    </small>
+                }
+                else
+                {
+                    <small>No external reference number</small>
+                }
+
+                <small>
+                    Securely recorded by an authenticated user
+                </small>
+            </article>
+
+            <article>
+                <span class="invoice-section-label">
+                    ACCOUNT POSITION
+                </span>
+
+                <strong>
+                    Balance after:
+                    @Currency(payment.BalanceAfter)
+                </strong>
+
+                <small>
+                    Balance before:
+                    @Currency(payment.BalanceBefore)
+                </small>
+
+                <small>
+                    Reduction:
+                    @Currency(payment.Amount)
+                </small>
+            </article>
+        </section>
+
+        <div class="invoice-table-wrap">
+            <table class="invoice-item-table">
+                <thead>
+                    <tr>
+                        <th>Purchase allocation</th>
+                        <th>Purchase date</th>
+                        <th>Status after payment</th>
+                        <th class="invoice-number-cell">
+                            Amount
+                        </th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @foreach (var allocation in payment.Allocations
+                        .OrderBy(item =>
+                            item.Purchase.PurchaseDateUtc))
+                    {
+                        <tr @key="allocation.Id">
+                            <td>
+                                <strong>
+                                    @allocation.Purchase.PurchaseNumber
+                                </strong>
+
+                                @if (!string.IsNullOrWhiteSpace(
+                                    allocation
+                                        .Purchase
+                                        .SupplierInvoiceNumber))
+                                {
+                                    <small>
+                                        Supplier invoice:
+                                        @(allocation
+                                            .Purchase
+                                            .SupplierInvoiceNumber)
+                                    </small>
+                                }
+                                else
+                                {
+                                    <small>
+                                        Applied to the oldest unpaid
+                                        purchase
+                                    </small>
+                                }
+                            </td>
+
+                            <td>
+                                @FormatDateTime(
+                                    allocation
+                                        .Purchase
+                                        .PurchaseDateUtc)
+                            </td>
+
+                            <td>
+                                <strong>
+                                    @allocation.Purchase.Status
+                                </strong>
+
+                                <small>
+                                    Current due:
+                                    @Currency(
+                                        allocation
+                                            .Purchase
+                                            .DueAmount)
+                                </small>
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                @Currency(allocation.Amount)
+                            </td>
+                        </tr>
+                    }
+
+                    @if (payment.AppliedToAccountBalanceAmount > 0)
+                    {
+                        <tr>
+                            <td>
+                                <strong>
+                                    Supplier opening balance
+                                </strong>
+
+                                <small>
+                                    Amount not linked to a purchase
+                                    receipt
+                                </small>
+                            </td>
+
+                            <td>
+                                @FormatDateTime(payment.PaidAtUtc)
+                            </td>
+
+                            <td>
+                                <strong>
+                                    Account balance reduced
+                                </strong>
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                @Currency(
+                                    payment
+                                        .AppliedToAccountBalanceAmount)
+                            </td>
+                        </tr>
+                    }
+
+                    @if (payment.Allocations.Count == 0 &&
+                        payment.AppliedToAccountBalanceAmount <= 0)
+                    {
+                        <tr>
+                            <td colspan="4">
+                                <strong>
+                                    No document allocation was recorded.
+                                </strong>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="invoice-lower-grid">
+            <section class="invoice-notes-panel">
+                <span class="invoice-section-label">
+                    VOUCHER DETAILS
+                </span>
+
+                @if (!string.IsNullOrWhiteSpace(payment.Notes))
+                {
+                    <p>
+                        <strong>Notes:</strong>
+                        @payment.Notes
+                    </p>
+                }
+                else
+                {
+                    <p>
+                        No additional payment notes were recorded.
+                    </p>
+                }
+
+                <div class="invoice-return-notice">
+                    <strong>
+                        Payment allocations were processed
+                        transactionally
+                    </strong>
+
+                    <small>
+                        The supplier balance and linked purchase dues
+                        were updated together in one secure operation.
+                    </small>
+                </div>
+            </section>
+
+            <section class="invoice-total-panel">
+                <div>
+                    <span>Applied to purchases</span>
+
+                    <strong>
+                        @Currency(
+                            payment.AppliedToPurchasesAmount)
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Applied to account balance</span>
+
+                    <strong>
+                        @Currency(
+                            payment.AppliedToAccountBalanceAmount)
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Previous balance</span>
+
+                    <strong>
+                        @Currency(payment.BalanceBefore)
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Remaining balance</span>
+
+                    <strong>
+                        @Currency(payment.BalanceAfter)
+                    </strong>
+                </div>
+
+                <div class="invoice-current-total">
+                    <span>Amount paid</span>
+
+                    <strong>
+                        @Currency(payment.Amount)
+                    </strong>
+                </div>
+            </section>
+        </div>
+
+        <footer class="invoice-document-footer">
+            <div>
+                <strong>@profile.PharmacyName</strong>
+
+                <span>
+                    Computer-generated supplier payment voucher ·
+                    No signature required
+                </span>
+            </div>
+
+            <div>
+                <span>Developed by Addin Alt</span>
+                <strong>@payment.PaymentNumber</strong>
+            </div>
+        </footer>
+    </section>
+}
+
+@code {
+    [Parameter]
+    public Guid SupplierPaymentId { get; set; }
+
+    private SupplierPayment? payment;
+    private PharmacyProfile profile = new();
+
+    private string? loadError;
+    private bool isLoading = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadReceiptAsync();
+    }
+
+    private async Task LoadReceiptAsync()
+    {
+        isLoading = true;
+        loadError = null;
+
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+
+            var database =
+                scope.ServiceProvider
+                    .GetRequiredService<ApplicationDbContext>();
+
+            payment =
+                await database.SupplierPayments
+                    .AsNoTracking()
+                    .AsSplitQuery()
+                    .Include(item => item.Supplier)
+                    .Include(item => item.Allocations)
+                        .ThenInclude(item => item.Purchase)
+                    .SingleOrDefaultAsync(item =>
+                        item.Id == SupplierPaymentId);
+
+            if (payment is null)
+            {
+                loadError =
+                    "The requested supplier payment voucher was not " +
+                    "found.";
+
+                return;
+            }
+
+            profile =
+                await database.PharmacyProfiles
+                    .AsNoTracking()
+                    .OrderBy(item => item.CreatedAtUtc)
+                    .FirstOrDefaultAsync()
+                ?? new PharmacyProfile();
+        }
+        catch (Exception exception)
+        {
+            loadError =
+                "The supplier payment voucher could not be loaded: " +
+                exception.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task PrintAsync()
+    {
+        await JavaScript.InvokeVoidAsync("window.print");
+    }
+
+    private string Currency(decimal amount)
+    {
+        var symbol =
+            string.IsNullOrWhiteSpace(profile.CurrencySymbol)
+                ? "৳"
+                : profile.CurrencySymbol;
+
+        return $"{symbol}{amount:N2}";
+    }
+
+    private string FormatDateTime(DateTime utcDateTime)
+    {
+        DateTime localDateTime;
+
+        try
+        {
+            var timeZone =
+                TimeZoneInfo.FindSystemTimeZoneById(
+                    profile.TimeZoneId);
+
+            localDateTime =
+                TimeZoneInfo.ConvertTimeFromUtc(
+                    DateTime.SpecifyKind(
+                        utcDateTime,
+                        DateTimeKind.Utc),
+                    timeZone);
+        }
+        catch
+        {
+            localDateTime = utcDateTime.ToLocalTime();
+        }
+
+        return localDateTime.ToString(
+            "dd MMM yyyy, hh:mm tt");
+    }
+
+    private static string FormatPaymentMethod(
+        PaymentMethod method)
+    {
+        return method switch
+        {
+            PaymentMethod.MobileBanking =>
+                "Mobile banking",
+
+            PaymentMethod.BankTransfer =>
+                "Bank transfer",
+
+            _ => method.ToString()
+        };
+    }
+}

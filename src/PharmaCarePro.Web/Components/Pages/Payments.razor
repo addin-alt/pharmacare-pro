@@ -659,7 +659,10 @@ else
                         {
                             <tr @key="payment.Id">
                                 <td>
-                                    <strong>@payment.PaymentNumber</strong>
+                                    <a class="invoice-table-link"
+                                       href="@($"/payments/suppliers/{payment.Id}/receipt")">
+                                        @payment.PaymentNumber
+                                    </a>
                                     <small>
                                         @(payment.PaidAtUtc
         .ToLocalTime()
