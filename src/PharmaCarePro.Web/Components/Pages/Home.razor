@@ -214,6 +214,15 @@
                     <small>Manage supplier accounts</small>
                 </span>
             </a>
+
+            <a class="quick-action" href="supplier-returns">
+                <span class="quick-action-icon action-orange">↪</span>
+
+                <span>
+                    <strong>Supplier returns</strong>
+                    <small>Reverse purchases and stock</small>
+                </span>
+            </a>
         </div>
     </section>
 
@@ -421,6 +430,26 @@
             </div>
 
             <div class="setup-item complete">
+                <span class="setup-check">↪</span>
+
+                <div>
+                    <strong>
+                        ৳@todaySupplierReturnsValue.ToString("N2")
+                        returned to suppliers today
+                    </strong>
+
+                    <small>
+                        @todaySupplierReturnCount
+                        supplier-return
+                        @(todaySupplierReturnCount == 1
+                            ? "transaction"
+                            : "transactions")
+                        recorded today.
+                    </small>
+                </div>
+            </div>
+
+            <div class="setup-item complete">
                 <span class="setup-check">Rx</span>
 
                 <div>
@@ -442,7 +471,8 @@
 
                     <small>
                         Medicines, purchases, inventory, sales,
-                        customers and suppliers are live.
+                        customer returns, supplier returns and account
+                        balances are live.
                     </small>
                 </div>
             </div>
@@ -466,10 +496,12 @@
     private decimal todaySalesValue;
     private decimal todayPaidValue;
     private decimal todayReturnsValue;
+    private decimal todaySupplierReturnsValue;
     private decimal customerReceivable;
     private decimal supplierPayable;
 
     private int todayInvoiceCount;
+    private int todaySupplierReturnCount;
     private int todayUnitsSold;
 
     private int inventoryMedicineCount;
@@ -553,6 +585,22 @@
                         saleReturn.ReturnedAtUtc < tomorrowStartUtc)
                     .SumAsync(saleReturn =>
                         (decimal?)saleReturn.GrossReturnAmount) ?? 0;
+
+            var todaySupplierReturnsQuery =
+                database.SupplierReturns
+                    .AsNoTracking()
+                    .Where(supplierReturn =>
+                        supplierReturn.ReturnedAtUtc >= todayStartUtc &&
+                        supplierReturn.ReturnedAtUtc < tomorrowStartUtc);
+
+            todaySupplierReturnCount =
+                await todaySupplierReturnsQuery.CountAsync();
+
+            todaySupplierReturnsValue =
+                await todaySupplierReturnsQuery.SumAsync(
+                    supplierReturn =>
+                        (decimal?)supplierReturn
+                            .GrossReturnAmount) ?? 0;
 
             var todaySaleItems =
                 await database.SaleItems
