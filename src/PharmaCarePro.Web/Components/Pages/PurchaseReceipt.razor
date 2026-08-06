@@ -1,0 +1,711 @@
+@page "/purchases/{PurchaseId:guid}/receipt"
+
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.JSInterop
+@using PharmaCarePro.Domain.Entities
+@using PharmaCarePro.Web.Data
+
+@inject IServiceScopeFactory ScopeFactory
+@inject IJSRuntime JavaScript
+
+<PageTitle>
+    @(purchase is null
+        ? "Purchase Receipt | PharmaCare Pro"
+        : $"{purchase.PurchaseNumber} | PharmaCare Pro")
+</PageTitle>
+
+<div class="page-heading module-heading invoice-screen-heading">
+    <div>
+        <span class="eyebrow">SUPPLIER PURCHASE DOCUMENT</span>
+        <h1>Purchase receipt</h1>
+
+        <p>
+            Review received batches, payments, outstanding dues and
+            supplier returns linked to this purchase.
+        </p>
+    </div>
+
+    <div class="heading-actions">
+        <a class="button button-secondary"
+           href="/purchases">
+            Back to Purchases
+        </a>
+
+        @if (purchase is not null)
+        {
+            <button class="button button-primary"
+                    type="button"
+                    @onclick="PrintAsync">
+                Print receipt
+            </button>
+        }
+    </div>
+</div>
+
+@if (isLoading)
+{
+    <section class="dashboard-panel invoice-loading-panel">
+        <strong>Loading purchase receipt...</strong>
+
+        <p>
+            Reading the purchase, supplier, batches and return history
+            from Supabase.
+        </p>
+    </section>
+}
+else if (!string.IsNullOrWhiteSpace(loadError))
+{
+    <div class="form-status status-error">
+        @loadError
+    </div>
+}
+else if (purchase is not null)
+{
+    <section class="invoice-sheet">
+        <header class="invoice-document-header">
+            <div class="invoice-pharmacy-identity">
+                <div class="invoice-pharmacy-mark">↓</div>
+
+                <div>
+                    <h2>@profile.PharmacyName</h2>
+                    <strong>@profile.BranchName</strong>
+
+                    @if (!string.IsNullOrWhiteSpace(
+                        profile.Address))
+                    {
+                        <p>@profile.Address</p>
+                    }
+
+                    <div class="invoice-contact-line">
+                        @if (!string.IsNullOrWhiteSpace(
+                            profile.Phone))
+                        {
+                            <span>@profile.Phone</span>
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(
+                            profile.Email))
+                        {
+                            <span>@profile.Email</span>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="invoice-document-title">
+                <span class="invoice-status-badge
+                    @GetStatusClass(purchase.Status)">
+                    @FormatStatus(purchase.Status)
+                </span>
+
+                <h2>PURCHASE RECEIPT</h2>
+                <strong>@purchase.PurchaseNumber</strong>
+
+                <small>
+                    @FormatDateTime(purchase.PurchaseDateUtc)
+                </small>
+            </div>
+        </header>
+
+        <section class="invoice-information-grid">
+            <article>
+                <span class="invoice-section-label">
+                    SUPPLIER
+                </span>
+
+                <strong>
+                    @(purchase.Supplier?.Name ??
+                        "Unknown supplier")
+                </strong>
+
+                <small>
+                    Supplier code:
+                    @(purchase.Supplier?.SupplierCode ??
+                        "Not available")
+                </small>
+
+                @if (!string.IsNullOrWhiteSpace(
+                    purchase.Supplier?.ContactPerson))
+                {
+                    <small>
+                        Contact:
+                        @purchase.Supplier.ContactPerson
+                    </small>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(
+                    purchase.Supplier?.Phone))
+                {
+                    <small>
+                        Phone:
+                        @purchase.Supplier.Phone
+                    </small>
+                }
+            </article>
+
+            <article>
+                <span class="invoice-section-label">
+                    SUPPLIER INVOICE
+                </span>
+
+                <strong>
+                    @(string.IsNullOrWhiteSpace(
+                        purchase.SupplierInvoiceNumber)
+                        ? "No supplier invoice reference"
+                        : purchase.SupplierInvoiceNumber)
+                </strong>
+
+                <small>
+                    Received:
+                    @FormatDateTime(
+                        purchase.PurchaseDateUtc)
+                </small>
+
+                <small>
+                    @purchase.Items.Count batch line(s)
+                </small>
+            </article>
+
+            <article>
+                <span class="invoice-section-label">
+                    PAYMENT POSITION
+                </span>
+
+                <strong>
+                    @FormatPaymentMethod(
+                        purchase.PaymentMethod)
+                </strong>
+
+                <small>
+                    Current paid:
+                    @Currency(purchase.PaidAmount)
+                </small>
+
+                <small>
+                    Current due:
+                    @Currency(purchase.DueAmount)
+                </small>
+            </article>
+        </section>
+
+        <div class="invoice-table-wrap">
+            <table class="invoice-item-table">
+                <thead>
+                    <tr>
+                        <th>Medicine</th>
+                        <th>Batch</th>
+                        <th class="invoice-number-cell">
+                            Received
+                        </th>
+                        <th class="invoice-number-cell">
+                            Returned
+                        </th>
+                        <th class="invoice-number-cell">
+                            Net retained
+                        </th>
+                        <th class="invoice-number-cell">
+                            Unit cost
+                        </th>
+                        <th class="invoice-number-cell">
+                            Original value
+                        </th>
+                        <th class="invoice-number-cell">
+                            Return value
+                        </th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @foreach (var item in purchase.Items
+                        .OrderBy(item => item.MedicineName)
+                        .ThenBy(item => item.BatchNumber))
+                    {
+                        var returnedPaid =
+                            item.ReturnItems.Sum(returnItem =>
+                                returnItem.Quantity);
+
+                        var returnedFree =
+                            item.ReturnItems.Sum(returnItem =>
+                                returnItem.FreeQuantity);
+
+                        var returnedValue =
+                            item.ReturnItems.Sum(returnItem =>
+                                returnItem.LineReturnAmount);
+
+                        <tr @key="item.Id">
+                            <td>
+                                <strong>@item.MedicineName</strong>
+
+                                @if (!string.IsNullOrWhiteSpace(
+                                    item.RackLocation))
+                                {
+                                    <small>
+                                        Rack:
+                                        @item.RackLocation
+                                    </small>
+                                }
+                                else
+                                {
+                                    <small>
+                                        Purchase inventory line
+                                    </small>
+                                }
+                            </td>
+
+                            <td>
+                                <strong>@item.BatchNumber</strong>
+
+                                <small>
+                                    Expires
+                                    @(item.ExpiryDate.ToString(
+                                        "dd MMM yyyy"))
+                                </small>
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                <strong>
+                                    @(item.Quantity +
+                                        item.FreeQuantity)
+                                </strong>
+
+                                <small>
+                                    @item.Quantity paid +
+                                    @item.FreeQuantity free
+                                </small>
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                <strong>
+                                    @(returnedPaid +
+                                        returnedFree)
+                                </strong>
+
+                                <small>
+                                    @returnedPaid paid +
+                                    @returnedFree free
+                                </small>
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                <strong>
+                                    @(Math.Max(
+                                        0,
+                                        item.Quantity -
+                                        returnedPaid) +
+                                      Math.Max(
+                                        0,
+                                        item.FreeQuantity -
+                                        returnedFree))
+                                </strong>
+
+                                <small>
+                                    From this receipt
+                                </small>
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                @Currency(item.PurchasePrice)
+                            </td>
+
+                            <td class="invoice-number-cell">
+                                @Currency(item.LineTotal)
+                            </td>
+
+                            <td class="invoice-number-cell
+                                invoice-return-value">
+                                −@Currency(returnedValue)
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="invoice-lower-grid">
+            <section class="invoice-notes-panel">
+                <span class="invoice-section-label">
+                    PURCHASE DETAILS
+                </span>
+
+                @if (!string.IsNullOrWhiteSpace(purchase.Notes))
+                {
+                    <p>
+                        <strong>Notes:</strong>
+                        @purchase.Notes
+                    </p>
+                }
+                else
+                {
+                    <p>
+                        No additional purchase notes were recorded.
+                    </p>
+                }
+
+                <div class="invoice-return-notice">
+                    <strong>
+                        This document reflects all recorded supplier
+                        returns
+                    </strong>
+
+                    <small>
+                        Original receipt values remain visible while
+                        current purchase, paid and due balances show
+                        their post-return position.
+                    </small>
+                </div>
+            </section>
+
+            <section class="invoice-total-panel">
+                <div>
+                    <span>Subtotal</span>
+
+                    <strong>
+                        @Currency(purchase.Subtotal)
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Discount</span>
+
+                    <strong>
+                        −@Currency(purchase.DiscountAmount)
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Tax</span>
+
+                    <strong>
+                        @Currency(purchase.TaxAmount)
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Original purchase value</span>
+
+                    <strong>
+                        @Currency(OriginalPurchaseValue)
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Supplier returns</span>
+
+                    <strong class="invoice-return-value">
+                        −@Currency(ReturnedValue)
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Current paid</span>
+
+                    <strong>
+                        @Currency(purchase.PaidAmount)
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Current due</span>
+
+                    <strong>
+                        @Currency(purchase.DueAmount)
+                    </strong>
+                </div>
+
+                <div class="invoice-current-total">
+                    <span>Current purchase value</span>
+
+                    <strong>
+                        @Currency(purchase.GrandTotal)
+                    </strong>
+                </div>
+            </section>
+        </div>
+
+        @if (purchase.Returns.Count > 0)
+        {
+            <section class="invoice-return-history">
+                <div class="panel-heading">
+                    <div>
+                        <span class="invoice-section-label">
+                            SUPPLIER RETURN HISTORY
+                        </span>
+
+                        <h2>Returns linked to this purchase</h2>
+                    </div>
+                </div>
+
+                <div class="invoice-table-wrap">
+                    <table class="invoice-item-table">
+                        <thead>
+                            <tr>
+                                <th>Return</th>
+                                <th>Date</th>
+                                <th class="invoice-number-cell">
+                                    Paid units
+                                </th>
+                                <th class="invoice-number-cell">
+                                    Free units
+                                </th>
+                                <th class="invoice-number-cell">
+                                    Payable reduction
+                                </th>
+                                <th class="invoice-number-cell">
+                                    Supplier refund
+                                </th>
+                                <th class="invoice-number-cell">
+                                    Return value
+                                </th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            @foreach (var supplierReturn in
+                                purchase.Returns
+                                    .OrderBy(item =>
+                                        item.ReturnedAtUtc))
+                            {
+                                <tr @key="supplierReturn.Id">
+                                    <td>
+                                        <a class="invoice-table-link"
+                                           href="@($"/supplier-returns/{supplierReturn.Id}/receipt")">
+                                            @supplierReturn.ReturnNumber
+                                        </a>
+
+                                        <small>
+                                            @supplierReturn.Reason
+                                        </small>
+                                    </td>
+
+                                    <td>
+                                        @FormatDateTime(
+                                            supplierReturn
+                                                .ReturnedAtUtc)
+                                    </td>
+
+                                    <td class="invoice-number-cell">
+                                        @(supplierReturn.Items.Sum(
+                                            item =>
+                                                item.Quantity))
+                                    </td>
+
+                                    <td class="invoice-number-cell">
+                                        @(supplierReturn.Items.Sum(
+                                            item =>
+                                                item.FreeQuantity))
+                                    </td>
+
+                                    <td class="invoice-number-cell">
+                                        @Currency(
+                                            supplierReturn
+                                                .PayableReductionAmount)
+                                    </td>
+
+                                    <td class="invoice-number-cell">
+                                        @Currency(
+                                            supplierReturn
+                                                .SupplierRefundAmount)
+                                    </td>
+
+                                    <td class="invoice-number-cell
+                                        invoice-return-value">
+                                        −@Currency(
+                                            supplierReturn
+                                                .GrossReturnAmount)
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        }
+
+        <footer class="invoice-document-footer">
+            <div>
+                <strong>@profile.PharmacyName</strong>
+
+                <span>
+                    Computer-generated purchase receipt ·
+                    No signature required
+                </span>
+            </div>
+
+            <div>
+                <span>Developed by Addin Alt</span>
+                <strong>@purchase.PurchaseNumber</strong>
+            </div>
+        </footer>
+    </section>
+}
+
+@code {
+    [Parameter]
+    public Guid PurchaseId { get; set; }
+
+    private Purchase? purchase;
+    private PharmacyProfile profile = new();
+
+    private string? loadError;
+    private bool isLoading = true;
+
+    private decimal ReturnedValue =>
+        purchase?.Returns.Sum(item =>
+            item.GrossReturnAmount) ?? 0;
+
+    private decimal OriginalPurchaseValue =>
+        Math.Round(
+            (purchase?.GrandTotal ?? 0) +
+            ReturnedValue,
+            2,
+            MidpointRounding.AwayFromZero);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadReceiptAsync();
+    }
+
+    private async Task LoadReceiptAsync()
+    {
+        isLoading = true;
+        loadError = null;
+
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+
+            var database =
+                scope.ServiceProvider
+                    .GetRequiredService<ApplicationDbContext>();
+
+            purchase =
+                await database.Purchases
+                    .AsNoTracking()
+                    .AsSplitQuery()
+                    .Include(item => item.Supplier)
+                    .Include(item => item.Items)
+                        .ThenInclude(item =>
+                            item.ReturnItems)
+                    .Include(item => item.Returns)
+                        .ThenInclude(item =>
+                            item.Items)
+                    .SingleOrDefaultAsync(item =>
+                        item.Id == PurchaseId);
+
+            if (purchase is null)
+            {
+                loadError =
+                    "The requested purchase receipt was not found.";
+
+                return;
+            }
+
+            profile =
+                await database.PharmacyProfiles
+                    .AsNoTracking()
+                    .OrderBy(item => item.CreatedAtUtc)
+                    .FirstOrDefaultAsync()
+                ?? new PharmacyProfile();
+        }
+        catch (Exception exception)
+        {
+            loadError =
+                "The purchase receipt could not be loaded: " +
+                exception.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task PrintAsync()
+    {
+        await JavaScript.InvokeVoidAsync("window.print");
+    }
+
+    private string Currency(decimal amount)
+    {
+        var symbol =
+            string.IsNullOrWhiteSpace(profile.CurrencySymbol)
+                ? "৳"
+                : profile.CurrencySymbol;
+
+        return $"{symbol}{amount:N2}";
+    }
+
+    private string FormatDateTime(DateTime utcDateTime)
+    {
+        DateTime localDateTime;
+
+        try
+        {
+            var timeZone =
+                TimeZoneInfo.FindSystemTimeZoneById(
+                    profile.TimeZoneId);
+
+            localDateTime =
+                TimeZoneInfo.ConvertTimeFromUtc(
+                    DateTime.SpecifyKind(
+                        utcDateTime,
+                        DateTimeKind.Utc),
+                    timeZone);
+        }
+        catch
+        {
+            localDateTime =
+                utcDateTime.ToLocalTime();
+        }
+
+        return localDateTime.ToString(
+            "dd MMM yyyy, hh:mm tt");
+    }
+
+    private static string FormatPaymentMethod(
+        PaymentMethod method)
+    {
+        return method switch
+        {
+            PaymentMethod.MobileBanking =>
+                "Mobile banking",
+
+            PaymentMethod.BankTransfer =>
+                "Bank transfer",
+
+            PaymentMethod.Due =>
+                "Purchase due",
+
+            _ => method.ToString()
+        };
+    }
+
+    private static string FormatStatus(
+        PurchaseStatus status)
+    {
+        return status switch
+        {
+            PurchaseStatus.Returned =>
+                "Fully returned",
+
+            _ => status.ToString()
+        };
+    }
+
+    private static string GetStatusClass(
+        PurchaseStatus status)
+    {
+        return status switch
+        {
+            PurchaseStatus.Received =>
+                "invoice-status-completed",
+
+            PurchaseStatus.Returned =>
+                "invoice-status-refunded",
+
+            PurchaseStatus.Cancelled =>
+                "invoice-status-refunded",
+
+            _ => string.Empty
+        };
+    }
+}

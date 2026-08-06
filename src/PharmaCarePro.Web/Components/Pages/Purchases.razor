@@ -385,7 +385,10 @@
                              @key="purchase.Id">
                         <div class="purchase-history-heading">
                             <div>
-                                <strong>@purchase.PurchaseNumber</strong>
+                                <a class="invoice-table-link"
+                                   href="@($"/purchases/{purchase.Id}/receipt")">
+                                    @purchase.PurchaseNumber
+                                </a>
                                 <small>
                                     @(purchase.PurchaseDateUtc
                                         .ToLocalTime()
