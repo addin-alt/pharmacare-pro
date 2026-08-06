@@ -36,6 +36,9 @@ public sealed class PrescriptionItem : IValidatableObject
     [StringLength(500)]
     public string? Notes { get; set; }
 
+    public ICollection<SaleItem> SaleItems { get; set; } =
+        new List<SaleItem>();
+
     public IEnumerable<ValidationResult> Validate(
         ValidationContext validationContext)
     {

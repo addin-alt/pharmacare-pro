@@ -183,6 +183,7 @@ public class ApplicationDbContext(
             entity.HasIndex(sale => sale.Status);
             entity.HasIndex(sale => sale.CustomerPhone);
             entity.HasIndex(sale => sale.CustomerId);
+            entity.HasIndex(sale => sale.PrescriptionId);
 
             entity.Property(sale => sale.Subtotal).HasPrecision(18, 2);
             entity.Property(sale => sale.DiscountAmount).HasPrecision(18, 2);
@@ -203,6 +204,11 @@ public class ApplicationDbContext(
                 .WithMany(customer => customer.Sales)
                 .HasForeignKey(sale => sale.CustomerId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(sale => sale.Prescription)
+                .WithMany(prescription => prescription.Sales)
+                .HasForeignKey(sale => sale.PrescriptionId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         builder.Entity<SaleItem>(entity =>
@@ -212,6 +218,7 @@ public class ApplicationDbContext(
             entity.HasKey(item => item.Id);
 
             entity.HasIndex(item => item.SaleId);
+            entity.HasIndex(item => item.PrescriptionItemId);
             entity.HasIndex(item => item.MedicineId);
             entity.HasIndex(item => item.MedicineBatchId);
 
@@ -234,6 +241,13 @@ public class ApplicationDbContext(
                 .WithMany()
                 .HasForeignKey(item => item.MedicineBatchId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(item => item.PrescriptionItem)
+                .WithMany(prescriptionItem =>
+                    prescriptionItem.SaleItems)
+                .HasForeignKey(item =>
+                    item.PrescriptionItemId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
 

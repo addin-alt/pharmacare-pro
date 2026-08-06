@@ -51,6 +51,9 @@ public sealed class Prescription : IValidatableObject
     public ICollection<PrescriptionItem> Items { get; set; } =
         new List<PrescriptionItem>();
 
+    public ICollection<Sale> Sales { get; set; } =
+        new List<Sale>();
+
     public IEnumerable<ValidationResult> Validate(
         ValidationContext validationContext)
     {

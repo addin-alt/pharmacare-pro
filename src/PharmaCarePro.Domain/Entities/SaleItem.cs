@@ -10,6 +10,10 @@ public sealed class SaleItem
 
     public Sale? Sale { get; set; }
 
+    public Guid? PrescriptionItemId { get; set; }
+
+    public PrescriptionItem? PrescriptionItem { get; set; }
+
     public Guid MedicineId { get; set; }
 
     public Medicine? Medicine { get; set; }

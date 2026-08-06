@@ -14,6 +14,10 @@ public sealed class Sale : IValidatableObject
 
     public Customer? Customer { get; set; }
 
+    public Guid? PrescriptionId { get; set; }
+
+    public Prescription? Prescription { get; set; }
+
     [StringLength(120)]
     public string? CustomerName { get; set; }
 
