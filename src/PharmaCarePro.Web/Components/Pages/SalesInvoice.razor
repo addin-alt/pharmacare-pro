@@ -19,8 +19,8 @@
         <span class="eyebrow">SALES DOCUMENT</span>
         <h1>Sales invoice</h1>
         <p>
-            Review the original sale, payments, returns and current
-            settlement position.
+            Review the original sale, linked prescription,
+            payments, returns and current settlement position.
         </p>
     </div>
 
@@ -177,6 +177,45 @@ else if (sale is not null)
                     @profile.CurrencyCode
                 </small>
             </article>
+
+            @if (sale.Prescription is
+                Prescription prescription)
+            {
+                <article>
+                    <span class="invoice-section-label">
+                        PRESCRIPTION
+                    </span>
+
+                    <strong>
+                        @prescription.PrescriptionNumber
+                    </strong>
+
+                    <small>
+                        Prescriber:
+                        @prescription.PrescriberName
+                    </small>
+
+                    @if (!string.IsNullOrWhiteSpace(
+                        prescription.HospitalOrClinic))
+                    {
+                        <small>
+                            @prescription.HospitalOrClinic
+                        </small>
+                    }
+
+                    <small>
+                        Issued:
+                        @prescription.IssuedDate
+                            .ToString("dd MMM yyyy")
+                    </small>
+
+                    <small>
+                        Current status:
+                        @FormatPrescriptionStatus(
+                            prescription.Status)
+                    </small>
+                </article>
+            }
         </section>
 
         <div class="invoice-table-wrap">
@@ -207,6 +246,28 @@ else if (sale is not null)
                                     @item.GenericName ·
                                     @item.Strength
                                 </small>
+
+                                @if (item.PrescriptionItem is
+                                    PrescriptionItem prescriptionItem)
+                                {
+                                    <small>
+                                        Dosage:
+                                        @(prescriptionItem
+                                            .DosageInstructions)
+                                    </small>
+
+                                    <small>
+                                        Prescribed:
+                                        @(prescriptionItem
+                                            .QuantityPrescribed)
+                                        · This invoice:
+                                        @DispensedOnInvoice(
+                                            prescriptionItem.Id)
+                                        · Current total:
+                                        @(prescriptionItem
+                                            .QuantityDispensed)
+                                    </small>
+                                }
                             </td>
 
                             <td>
@@ -461,8 +522,12 @@ else if (sale is not null)
             sale =
                 await database.Sales
                     .AsNoTracking()
+                    .AsSplitQuery()
                     .Include(item => item.Customer)
+                    .Include(item => item.Prescription)
                     .Include(item => item.Items)
+                        .ThenInclude(item =>
+                            item.PrescriptionItem)
                     .Include(item => item.Returns)
                         .ThenInclude(item => item.Items)
                     .SingleOrDefaultAsync(item =>
@@ -497,6 +562,16 @@ else if (sale is not null)
     private async Task PrintAsync()
     {
         await JavaScript.InvokeVoidAsync("window.print");
+    }
+
+    private int DispensedOnInvoice(
+        Guid prescriptionItemId)
+    {
+        return sale?.Items
+            .Where(item =>
+                item.PrescriptionItemId ==
+                    prescriptionItemId)
+            .Sum(item => item.Quantity) ?? 0;
     }
 
     private int ReturnedQuantity(SaleItem item)
@@ -594,6 +669,21 @@ else if (sale is not null)
         {
             SaleStatus.PartiallyPaid =>
                 "Partially paid",
+
+            _ => status.ToString()
+        };
+    }
+
+    private static string FormatPrescriptionStatus(
+        PrescriptionStatus status)
+    {
+        return status switch
+        {
+            PrescriptionStatus.PartiallyDispensed =>
+                "Partially dispensed",
+
+            PrescriptionStatus.Dispensed =>
+                "Fully dispensed",
 
             _ => status.ToString()
         };
