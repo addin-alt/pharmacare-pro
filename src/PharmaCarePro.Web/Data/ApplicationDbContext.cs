@@ -1023,6 +1023,22 @@ public class ApplicationDbContext(
 
             entity.HasKey(profile => profile.Id);
 
+            entity.Property(profile =>
+                    profile.CustomerPaymentPrefix)
+                .HasDefaultValue("CPY");
+
+            entity.Property(profile =>
+                    profile.SupplierPaymentPrefix)
+                .HasDefaultValue("SPY");
+
+            entity.Property(profile =>
+                    profile.SaleReturnPrefix)
+                .HasDefaultValue("SRT");
+
+            entity.Property(profile =>
+                    profile.SupplierReturnPrefix)
+                .HasDefaultValue("PRT");
+
             entity.HasIndex(profile => new
                 {
                     profile.PharmacyName,

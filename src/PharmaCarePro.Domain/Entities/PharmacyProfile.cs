@@ -73,6 +73,38 @@ public sealed class PharmacyProfile
     [StringLength(12)]
     public string PrescriptionPrefix { get; set; } = "RX";
 
+    [Required]
+    [RegularExpression(
+        "^[A-Za-z0-9-]{2,12}$",
+        ErrorMessage =
+            "Customer payment prefix may contain letters, numbers and hyphens.")]
+    [StringLength(12)]
+    public string CustomerPaymentPrefix { get; set; } = "CPY";
+
+    [Required]
+    [RegularExpression(
+        "^[A-Za-z0-9-]{2,12}$",
+        ErrorMessage =
+            "Supplier payment prefix may contain letters, numbers and hyphens.")]
+    [StringLength(12)]
+    public string SupplierPaymentPrefix { get; set; } = "SPY";
+
+    [Required]
+    [RegularExpression(
+        "^[A-Za-z0-9-]{2,12}$",
+        ErrorMessage =
+            "Sales return prefix may contain letters, numbers and hyphens.")]
+    [StringLength(12)]
+    public string SaleReturnPrefix { get; set; } = "SRT";
+
+    [Required]
+    [RegularExpression(
+        "^[A-Za-z0-9-]{2,12}$",
+        ErrorMessage =
+            "Supplier return prefix may contain letters, numbers and hyphens.")]
+    [StringLength(12)]
+    public string SupplierReturnPrefix { get; set; } = "PRT";
+
     [Range(
         1,
         3650,
