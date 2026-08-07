@@ -3,6 +3,7 @@
 @using Microsoft.EntityFrameworkCore
 @using PharmaCarePro.Application.Documents
 @using PharmaCarePro.Application.Inventory
+@using PharmaCarePro.Application.Prescriptions
 @using PharmaCarePro.Domain.Entities
 @using PharmaCarePro.Web.Data
 @inject IServiceScopeFactory ScopeFactory
@@ -1030,6 +1031,62 @@
                 }
             }
 
+            PrescriptionDispensingPlan?
+                dispensingPlan = null;
+
+            if (selectedPrescription is not null)
+            {
+                var requestedQuantities =
+                    new Dictionary<Guid, int>();
+
+                foreach (var cartLine in cart)
+                {
+                    if (!cartLine.PrescriptionItemId.HasValue)
+                    {
+                        throw new InvalidOperationException(
+                            "Every cart item must belong to the " +
+                            "selected prescription.");
+                    }
+
+                    var prescriptionItem =
+                        selectedPrescription.Items
+                            .SingleOrDefault(item =>
+                                item.Id ==
+                                    cartLine
+                                        .PrescriptionItemId.Value &&
+                                item.MedicineId ==
+                                    cartLine.MedicineId);
+
+                    if (prescriptionItem is null)
+                    {
+                        throw new InvalidOperationException(
+                            "A prescribed medicine line could not " +
+                            "be verified.");
+                    }
+
+                    if (!requestedQuantities.TryAdd(
+                        prescriptionItem.Id,
+                        cartLine.Quantity))
+                    {
+                        throw new InvalidOperationException(
+                            "A prescription item cannot appear more " +
+                            "than once in the sale.");
+                    }
+                }
+
+                dispensingPlan =
+                    PrescriptionDispensingCalculator.Calculate(
+                        selectedPrescription.Items.Select(item =>
+                            new PrescriptionDispensingLine(
+                                item.Id,
+                                item.MedicineId,
+                                item.QuantityPrescribed,
+                                item.QuantityDispensed,
+                                requestedQuantities
+                                    .GetValueOrDefault(
+                                        item.Id))));
+            }
+
             var checkoutCustomerId =
                 selectedPrescription?.CustomerId ??
                 selectedCustomerId;
@@ -1091,42 +1148,14 @@
 
                 if (selectedPrescription is not null)
                 {
-                    if (!cartLine.PrescriptionItemId.HasValue)
-                    {
-                        throw new InvalidOperationException(
-                            "Every cart item must belong to the " +
-                            "selected prescription.");
-                    }
-
                     prescriptionItem =
                         selectedPrescription.Items
-                            .SingleOrDefault(item =>
+                            .Single(item =>
                                 item.Id ==
                                     cartLine
-                                        .PrescriptionItemId.Value &&
+                                        .PrescriptionItemId!.Value &&
                                 item.MedicineId ==
                                     cartLine.MedicineId);
-
-                    if (prescriptionItem is null)
-                    {
-                        throw new InvalidOperationException(
-                            "A prescribed medicine line could not " +
-                            "be verified.");
-                    }
-
-                    var remainingQuantity =
-                        prescriptionItem
-                            .QuantityPrescribed -
-                        prescriptionItem
-                            .QuantityDispensed;
-
-                    if (cartLine.Quantity >
-                        remainingQuantity)
-                    {
-                        throw new InvalidOperationException(
-                            "The sale quantity exceeds the remaining " +
-                            "prescribed quantity.");
-                    }
                 }
 
                 var batches = await database.MedicineBatches
@@ -1200,19 +1229,22 @@
                         });
                 }
 
-                if (prescriptionItem is not null)
-                {
-                    prescriptionItem.QuantityDispensed +=
-                        cartLine.Quantity;
-                }
             }
 
-            if (selectedPrescription is not null)
+            if (selectedPrescription is not null &&
+                dispensingPlan is not null)
             {
+                foreach (var prescriptionItem in
+                    selectedPrescription.Items)
+                {
+                    prescriptionItem.QuantityDispensed =
+                        dispensingPlan
+                            .NewDispensedQuantities[
+                                prescriptionItem.Id];
+                }
+
                 selectedPrescription.Status =
-                    selectedPrescription.Items.All(item =>
-                        item.QuantityDispensed >=
-                        item.QuantityPrescribed)
+                    dispensingPlan.IsFullyDispensed
                         ? PrescriptionStatus.Dispensed
                         : PrescriptionStatus
                             .PartiallyDispensed;
