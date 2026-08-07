@@ -1,5 +1,6 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
+using PharmaCarePro.Application.Documents;
 using PharmaCarePro.Application.SupplierReturns;
 using PharmaCarePro.Domain.Entities;
 using PharmaCarePro.Web.Data;
@@ -203,11 +204,24 @@ public sealed class SupplierReturnService(
 
         var now = DateTime.UtcNow;
 
+        var supplierReturnPrefix =
+            await database.PharmacyProfiles
+                .AsNoTracking()
+                .OrderBy(profile =>
+                    profile.CreatedAtUtc)
+                .Select(profile =>
+                    profile.SupplierReturnPrefix)
+                .FirstOrDefaultAsync(
+                    cancellationToken)
+            ?? "PRT";
+
         var supplierReturn =
             new SupplierReturn
             {
                 ReturnNumber =
-                    GenerateReturnNumber(now),
+                    DocumentNumberGenerator.Generate(
+                        supplierReturnPrefix,
+                        now),
                 PurchaseId = purchase.Id,
                 SupplierId = supplier.Id,
                 GrossReturnAmount =
@@ -527,18 +541,6 @@ public sealed class SupplierReturnService(
             throw new ArgumentException(
                 "Select a valid supplier refund method.");
         }
-    }
-
-    private static string GenerateReturnNumber(
-        DateTime createdAtUtc)
-    {
-        var suffix =
-            Guid.NewGuid()
-                .ToString("N")[..6]
-                .ToUpperInvariant();
-
-        return
-            $"PRT-{createdAtUtc:yyyyMMddHHmmss}-{suffix}";
     }
 
     private static string NormalizeRequired(

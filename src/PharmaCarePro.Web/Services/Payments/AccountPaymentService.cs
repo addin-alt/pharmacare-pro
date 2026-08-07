@@ -1,5 +1,6 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
+using PharmaCarePro.Application.Documents;
 using PharmaCarePro.Application.Payments;
 using PharmaCarePro.Domain.Entities;
 using PharmaCarePro.Web.Data;
@@ -92,6 +93,18 @@ public sealed class AccountPaymentService(
             outstandingSales.ToDictionary(sale => sale.Id);
 
         var now = DateTime.UtcNow;
+
+        var customerPaymentPrefix =
+            await database.PharmacyProfiles
+                .AsNoTracking()
+                .OrderBy(profile =>
+                    profile.CreatedAtUtc)
+                .Select(profile =>
+                    profile.CustomerPaymentPrefix)
+                .FirstOrDefaultAsync(
+                    cancellationToken)
+            ?? "CPY";
+
         var balanceAfter =
             RoundMoney(balanceBefore - amount);
 
@@ -107,7 +120,9 @@ public sealed class AccountPaymentService(
             new CustomerPayment
             {
                 ReceiptNumber =
-                    GenerateNumber("CPY", now),
+                    DocumentNumberGenerator.Generate(
+                        customerPaymentPrefix,
+                        now),
                 CustomerId = customer.Id,
                 Amount = amount,
                 BalanceBefore = balanceBefore,
@@ -261,6 +276,18 @@ public sealed class AccountPaymentService(
                 purchase => purchase.Id);
 
         var now = DateTime.UtcNow;
+
+        var supplierPaymentPrefix =
+            await database.PharmacyProfiles
+                .AsNoTracking()
+                .OrderBy(profile =>
+                    profile.CreatedAtUtc)
+                .Select(profile =>
+                    profile.SupplierPaymentPrefix)
+                .FirstOrDefaultAsync(
+                    cancellationToken)
+            ?? "SPY";
+
         var balanceAfter =
             RoundMoney(balanceBefore - amount);
 
@@ -277,7 +304,9 @@ public sealed class AccountPaymentService(
             new SupplierPayment
             {
                 PaymentNumber =
-                    GenerateNumber("SPY", now),
+                    DocumentNumberGenerator.Generate(
+                        supplierPaymentPrefix,
+                        now),
                 SupplierId = supplier.Id,
                 Amount = amount,
                 BalanceBefore = balanceBefore,
@@ -407,21 +436,6 @@ public sealed class AccountPaymentService(
                 $"Payment cannot exceed the {accountType} " +
                 $"balance of ৳{balance:N2}.");
         }
-    }
-
-    private static string GenerateNumber(
-        string prefix,
-        DateTime createdAtUtc)
-    {
-        var suffix =
-            Guid.NewGuid()
-                .ToString("N")[..6]
-                .ToUpperInvariant();
-
-        return
-            $"{prefix}-" +
-            $"{createdAtUtc:yyyyMMddHHmmss}-" +
-            suffix;
     }
 
     private static string NormalizeRequired(
